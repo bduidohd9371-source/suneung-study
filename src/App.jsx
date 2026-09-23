@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BookOpenCheck, Check, Clock3, Moon, Sun, Target, Zap } from 'lucide-react';
 import { CSAT_DATE, SUBJECTS } from './csat.js';
+import ExamSession from './ExamSession.jsx';
 
 function useTheme() {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
@@ -54,8 +55,11 @@ function ExamTimer({ subject }) {
 function App() {
   const [theme, toggleTheme] = useTheme();
   const [selected, setSelected] = useState(SUBJECTS[0]);
+  const [examActive, setExamActive] = useState(false);
   const dday = useCountdown(CSAT_DATE);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()), []);
+
+  if (examActive) return <ExamSession subject={selected} onExit={() => setExamActive(false)} />;
 
   return (
     <main className="app-shell">
@@ -68,7 +72,7 @@ function App() {
         </section>
         <section className="section-heading"><div><span className="eyebrow">YOUR STUDY, YOUR PACE</span><h2>오늘 연습할 과목</h2></div><span className="section-note"><span className="live-dot" /> 과목을 선택하면 시험 시간이 설정돼요</span></section>
         <section className="subject-grid" aria-label="과목 선택">{SUBJECTS.map((subject) => <button key={subject.id} className={`subject-card ${selected.id === subject.id ? 'is-selected' : ''}`} onClick={() => setSelected(subject)} aria-pressed={selected.id === subject.id}><span className={`subject-icon ${subject.color}`}>{subject.icon}</span><span className="subject-info"><strong>{subject.name}</strong><small>{subject.detail}</small></span><span className="subject-time">{subject.minutes}<small>분</small></span>{selected.id === subject.id && <span className="selected-check"><Check size={12} /></span>}</button>)}</section>
-        <div className="bottom-grid"><ExamTimer subject={selected} /><aside className="focus-card"><div className="focus-head"><span className="focus-icon"><Zap size={17} /></span><span className="eyebrow">TODAY'S FOCUS</span></div><h3>한 문제를 풀어도<br />이유까지 기록하기</h3><p>틀린 이유를 아는 순간,<br />다음 점수가 달라집니다.</p><div className="focus-footer"><span>다음 단계</span><span>오답 노트 준비 중 <ArrowRight size={14} /></span></div></aside></div>
+        <div className="bottom-grid"><ExamTimer subject={selected} /><aside className="focus-card"><div className="focus-head"><span className="focus-icon"><Zap size={17} /></span><span className="eyebrow">TODAY'S FOCUS</span></div><h3>선택한 과목으로<br />실전 연습 시작하기</h3><p>{selected.name} · {selected.minutes}분 시간 제한<br />제출하면 바로 채점해요.</p><button className="button button-primary start-exam-button" onClick={() => setExamActive(true)}>실전 풀이 시작 <ArrowRight size={16} /></button></aside></div>
         <footer className="footer"><span>© 2026 수능루틴</span><span>작은 복습이 쌓여 큰 실력이 됩니다.</span></footer>
       </div>
     </main>
