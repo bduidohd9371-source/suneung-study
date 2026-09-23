@@ -21,6 +21,20 @@ export function saveAttempt(attempt) {
   }
 }
 
+export function updateAttempt(attemptId, patch) {
+  try {
+    const attempts = readAttempts();
+    const index = attempts.findIndex((attempt) => attempt.id === attemptId);
+    if (index < 0) return false;
+    attempts[index] = { ...attempts[index], ...patch };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(attempts));
+    window.dispatchEvent(new Event('suneung:stats-updated'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readImportedQuestions(subjectId) {
   try {
     const banks = JSON.parse(localStorage.getItem(QUESTION_BANK_KEY) || '{}');
@@ -30,15 +44,27 @@ export function readImportedQuestions(subjectId) {
   }
 }
 
-export function saveImportedQuestions(subjectId, questions) {
+export function saveImportedQuestions(subjectId, questions, { replace = false } = {}) {
   try {
     const banks = JSON.parse(localStorage.getItem(QUESTION_BANK_KEY) || '{}');
-    const existing = Array.isArray(banks[subjectId]) ? banks[subjectId] : [];
+    const existing = !replace && Array.isArray(banks[subjectId]) ? banks[subjectId] : [];
     banks[subjectId] = [...existing, ...questions.map((question, index) => ({
       ...question,
       number: existing.length + index + 1,
       subjectId,
     }))];
+    localStorage.setItem(QUESTION_BANK_KEY, JSON.stringify(banks));
+    window.dispatchEvent(new Event('suneung:question-bank-updated'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function deleteImportedQuestion(subjectId, questionId) {
+  try {
+    const banks = JSON.parse(localStorage.getItem(QUESTION_BANK_KEY) || '{}');
+    banks[subjectId] = (Array.isArray(banks[subjectId]) ? banks[subjectId] : []).filter((question) => question.id !== questionId);
     localStorage.setItem(QUESTION_BANK_KEY, JSON.stringify(banks));
     window.dispatchEvent(new Event('suneung:question-bank-updated'));
     return true;
