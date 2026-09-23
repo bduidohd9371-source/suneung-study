@@ -9,13 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
     "@tailwindcss/vite": "latest",
+    "@vitejs/plugin-react": "latest",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^6.3.289",
     "react": "latest",
     "react-dom": "latest",
     "tailwindcss": "latest",
     "vite": "latest"
-  },
-  "devDependencies": {}
+  }
 }
