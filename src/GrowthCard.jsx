@@ -67,12 +67,19 @@ function getAchievements(stats = {}) {
 
 export default function GrowthCard({ studyMinutes = 0, questBonusXp = 0, clearBonusXp = 0, achievementStats = {} }) {
   const totalStudyMinutes = Math.max(0, Math.floor(Number(studyMinutes) || 0));
-  const totalXp = totalStudyMinutes + Math.max(0, Math.floor(Number(questBonusXp) || 0)) + Math.max(0, Math.floor(Number(clearBonusXp) || 0));
+  const baseStudyXp = totalStudyMinutes;
+  const questXp = Math.max(0, Math.floor(Number(questBonusXp) || 0));
+  const clearXp = Math.max(0, Math.floor(Number(clearBonusXp) || 0));
+  const achievementPreview = getAchievements({ ...achievementStats, studyMinutes: totalStudyMinutes });
+  const achievementXp = achievementPreview.filter((badge) => badge.progress >= badge.target).length * 20;
+  const streakXp = Math.min(100, Math.max(0, Number(achievementStats.bestStudyStreak) || 0) * 2);
+  const accuracyXp = achievementStats.questions >= 25 ? Math.min(100, Math.max(0, Math.floor((Number(achievementStats.accuracy) || 0) / 10) * 10)) : 0;
+  const totalXp = baseStudyXp + questXp + clearXp + achievementXp + streakXp + accuracyXp;
   const rankIndex = RANKS.reduce((current, rank, index) => totalXp >= rank.minXp ? index : current, 0);
   const rank = RANKS[rankIndex];
   const nextRank = RANKS[rankIndex + 1];
   const rankProgress = nextRank ? Math.min(100, ((totalXp - rank.minXp) / (nextRank.minXp - rank.minXp)) * 100) : 100;
-  const achievements = getAchievements({ ...achievementStats, studyMinutes });
+  const achievements = achievementPreview;
   const unlocked = achievements.filter((badge) => badge.progress >= badge.target).length;
   const nextAchievements = achievements
     .filter((badge) => badge.progress < badge.target)
@@ -85,15 +92,17 @@ export default function GrowthCard({ studyMinutes = 0, questBonusXp = 0, clearBo
     <section className={`growth-rank-hero rank-${rank.tone}`} aria-label={`현재 랭크 ${rank.name}`}>
       <div className="growth-rank-copy"><span className="growth-rank-label">CURRENT RANK</span><strong>{rank.name}</strong><span className="growth-rank-level">랭크 {rankIndex + 1} / {RANKS.length}</span></div>
       <div className="growth-rank-emblem"><Award size={38} strokeWidth={1.6} /></div>
-      <div className="growth-rank-xp"><span><Zap size={15} fill="currentColor" /> {totalXp.toLocaleString()} XP</span><small>누적 공부 {hours > 0 ? `${hours}시간 ` : ''}{minutes}분 · 퀘스트 {Number(questBonusXp) || 0} XP · 기출 클리어 {Number(clearBonusXp) || 0} XP</small></div>
-      <div className="growth-rank-progress"><div className="growth-progress-track" role="progressbar" aria-label={nextRank ? `${nextRank.name}까지 진행률 ${Math.round(rankProgress)}퍼센트` : '최고 랭크 달성'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(rankProgress)}><span style={{ width: `${rankProgress}%` }} /></div><div className="growth-progress-copy"><span>{rank.name}</span><strong>{nextRank ? `${(nextRank.minXp - totalXp).toLocaleString()} XP → ${nextRank.name}` : '최고 랭크 달성!'}</strong></div></div>
+      <div className="growth-rank-xp"><span><Zap size={15} fill="currentColor" /> {totalXp.toLocaleString()} XP</span><small>공부 {baseStudyXp} · 퀘스트 {questXp} · 기출 {clearXp} · 업적 {achievementXp} · 연속출석 {streakXp} · 정답률 {accuracyXp}</small></div>
+      <div className="growth-rank-progress"><div className="growth-rank-meta"><span>RANK POINTS</span><strong>{nextRank ? `${Math.round(rankProgress)}%` : 'MAX'}</strong></div><div className="growth-progress-track" role="progressbar" aria-label={nextRank ? `${nextRank.name}까지 진행률 ${Math.round(rankProgress)}퍼센트` : '최고 랭크 달성'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(rankProgress)}><span style={{ width: `${rankProgress}%` }} /></div><div className="growth-progress-copy"><span>{rank.name}</span><strong>{nextRank ? `${(nextRank.minXp - totalXp).toLocaleString()} XP → ${nextRank.name}` : '최고 랭크 달성!'}</strong></div></div>
     </section>
+
+    <section className="growth-rank-reward"><div><span className="eyebrow">NEXT UNLOCK</span><strong>{nextRank ? `${nextRank.name} 승급` : '챌린저 최고 랭크'}</strong><p>{nextRank ? `${(nextRank.minXp - totalXp).toLocaleString()} XP를 모으면 다음 랭크가 열려요.` : '모든 랭크를 정복했어요.'}</p></div><span className="growth-reward-chip"><Award size={15} /> {nextRank ? '새 랭크 칭호' : '최종 칭호'}</span></section>
 
     <section className="growth-missions"><div className="growth-section-heading"><div><span className="eyebrow">NEXT ACHIEVEMENTS</span><h2>다음 업적 미션</h2></div><span>가까운 목표부터</span></div><div className="growth-mission-grid">{nextAchievements.map((badge) => { const progress = Math.min(badge.progress, badge.target); const percent = Math.round((progress / badge.target) * 100); const shown = badge.format ? badge.format(progress) : `${progress} / ${badge.target}`; return <article className="growth-mission" key={badge.name}><div className="growth-mission-head"><span>{badge.icon}</span><small>진행 중</small></div><strong>{badge.name}</strong><p>{badge.detail}</p><div className="growth-mission-track" role="progressbar" aria-label={`${badge.name} 진행률 ${percent}%`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><span style={{ width: `${percent}%` }} /></div><small className="growth-mission-count">{shown} · {percent}%</small></article>; })}</div></section>
 
     <section className="growth-rank-section"><div className="growth-section-heading"><div><span className="eyebrow">RANK ROAD</span><h2>랭크 여정</h2></div><span>{rankIndex + 1} / {RANKS.length} 달성</span></div><div className="growth-rank-road">{RANKS.map((item, index) => { const achieved = totalXp >= item.minXp; return <div key={item.name} className={`growth-rank-stop ${achieved ? 'achieved' : ''} ${index === rankIndex ? 'current' : ''}`}><span className={`growth-rank-dot rank-${item.tone}`}>{achieved ? <Check size={13} /> : <LockKeyhole size={12} />}</span><span><strong>{item.name}</strong><small>{item.minXp.toLocaleString()} XP</small></span>{index === rankIndex && <em>현재</em>}</div>; })}</div></section>
 
     <section className="growth-achievement-section"><div className="growth-section-heading"><div><span className="eyebrow">ACHIEVEMENTS</span><h2>업적작</h2></div><span>{unlocked} / {achievements.length} 달성</span></div><div className="growth-achievement-grid">{achievements.map((badge) => { const achieved = badge.progress >= badge.target; const shownProgress = badge.format ? badge.format(Math.min(badge.progress, badge.target)) : `${Math.min(badge.progress, badge.target)} / ${badge.target}`; return <article key={badge.name} className={`growth-badge ${achieved ? 'unlocked' : ''}`}><span className="growth-badge-icon">{achieved ? badge.icon : <LockKeyhole size={15} />}</span><div><strong>{badge.name}</strong><small>{badge.detail} · {achieved ? '달성!' : shownProgress}</small></div></article>; })}</div></section>
-    <p className="growth-data-note">공부 기록은 1분당 1 XP, 퀘스트 완료는 5 XP, 기출 시험 종류별 첫 클리어는 +25 XP예요. 기본 퀘스트 3개를 모두 마치면 +10 XP예요. 쉬는 날에 감점은 없어요.</p>
+    <p className="growth-data-note">게임식 XP: 공부 1분 = 1 XP · 퀘스트 XP · 기출 첫 클리어 +25 XP · 업적 1개 +20 XP · 최고 연속출석 1일당 +2 XP(최대 100) · 25문항 이상 풀이 시 정답률 보너스(최대 100 XP). 감점은 없어요.</p>
   </div>;
 }
