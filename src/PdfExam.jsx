@@ -43,32 +43,68 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
   const pixelRatioRef = useRef(1);
   const [frameWidth, setFrameWidth] = useState(0);
   const remainingRef = useRef(remaining);
-  const pdfGestureRef = useRef(null);
+  const pdfGestureRef = useRef({ pointers: new Map(), pinch: null });
 
   const handlePdfPointerDown = (event) => {
     if (event.pointerType === 'pen') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    pdfGestureRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      panX: pdfPan.x,
-      panY: pdfPan.y,
-    };
+    const gesture = pdfGestureRef.current;
+    gesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
+    if (gesture.pointers.size === 2) {
+      const points = [...gesture.pointers.values()];
+      const dx = points[1].x - points[0].x;
+      const dy = points[1].y - points[0].y;
+      gesture.pinch = {
+        distance: Math.max(1, Math.hypot(dx, dy)),
+        zoom: pdfZoom,
+        panX: pdfPan.x,
+        panY: pdfPan.y,
+        midpointX: (points[0].x + points[1].x) / 2,
+        midpointY: (points[0].y + points[1].y) / 2,
+      };
+    } else {
+      gesture.pinch = null;
+      gesture.single = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, panX: pdfPan.x, panY: pdfPan.y };
+    }
   };
 
   const handlePdfPointerMove = (event) => {
-    const gesture = pdfGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (event.pointerType === 'pen') return;
-    const dx = event.clientX - gesture.startX;
-    const dy = event.clientY - gesture.startY;
-    setPdfPan({ x: gesture.panX + dx, y: gesture.panY + dy });
+    const gesture = pdfGestureRef.current;
+    if (!gesture.pointers.has(event.pointerId)) return;
+    gesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
+    if (gesture.pointers.size >= 2 && gesture.pinch) {
+      event.preventDefault();
+      const points = [...gesture.pointers.values()];
+      const dx = points[1].x - points[0].x;
+      const dy = points[1].y - points[0].y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const midpointX = (points[0].x + points[1].x) / 2;
+      const midpointY = (points[0].y + points[1].y) / 2;
+      const nextZoom = Math.min(3, Math.max(0.5, gesture.pinch.zoom * distance / gesture.pinch.distance));
+      setPdfZoom(Number(nextZoom.toFixed(3)));
+      setPdfPan({ x: gesture.pinch.panX + midpointX - gesture.pinch.midpointX, y: gesture.pinch.panY + midpointY - gesture.pinch.midpointY });
+      return;
+    }
+    if (gesture.single?.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const dx = event.clientX - gesture.single.startX;
+    const dy = event.clientY - gesture.single.startY;
+    setPdfPan({ x: gesture.single.panX + dx, y: gesture.single.panY + dy });
   };
 
   const handlePdfPointerUp = (event) => {
-    if (pdfGestureRef.current?.pointerId === event.pointerId) pdfGestureRef.current = null;
+    const gesture = pdfGestureRef.current;
+    gesture.pointers.delete(event.pointerId);
+    if (gesture.pointers.size < 2) gesture.pinch = null;
+    if (gesture.pointers.size === 1) {
+      const [pointerId, point] = [...gesture.pointers.entries()][0];
+      gesture.single = { pointerId, startX: point.x, startY: point.y, panX: pdfPan.x, panY: pdfPan.y };
+    } else if (!gesture.pointers.size) {
+      gesture.single = null;
+    }
   };
 
   const handlePdfWheel = (event) => {
@@ -189,7 +225,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
   }
   function beginInk(event) {
-    if ((!drawEnabled && !eraseEnabled) || event.pointerType !== 'pen') return;
+    if (event.pointerType !== 'pen') return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     if (eraseEnabled) {
@@ -273,7 +309,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
 
   return <main className={`pdf-exam-shell ${viewOnly ? 'pdf-reader-mode' : ''}`}><header className="pdf-exam-header"><button className="icon-button" onClick={exit} aria-label="공부방으로"><ArrowLeft size={18} /></button><div className="pdf-exam-title"><strong>{exam.name}</strong><small>{exam.subjectName} · {viewOnly ? '개념 PDF' : `${exam.total}문항 OMR 풀이`}</small></div>{!viewOnly && <><span className={`exam-clock ${remaining <= 300 ? 'is-warning' : ''}`} role="timer"><Clock3 size={15} /> {clockText(remaining)}</span><button className="button button-primary pdf-submit-top" onClick={submit}>제출</button></>}</header>
     {!viewOnly && draftReady && <p className={`pdf-draft-status ${draftSaveError ? 'has-error' : ''}`} role={draftSaveError ? 'alert' : 'status'}>{draftLoaded ? `이전 풀이를 복구했어요 · ${Object.keys(answers).length}/${exam.total}개 답변 · 저장 ${new Date(draftLoaded.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : '답안은 이 기기에 자동 저장돼요.'}{draftSaveError && <span> · 저장 공간을 확인해 주세요</span>}</p>}
-    {loadError ? <section className="pdf-load-error"><p>{loadError}</p><button className="button button-secondary" onClick={exit}>목록으로</button></section> : <div className="pdf-exam-layout"><section className="pdf-page-area"><div className="pdf-page-toolbar"><button className="button button-secondary" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ArrowLeft size={14} /> 이전</button><span><FileText size={14} /> {page} / {pageCount || '…'} 쪽</span><button className="button button-secondary" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>다음 <ArrowRight size={14} /></button><button className={`button ${clearerText ? 'button-primary' : 'button-secondary'} pdf-contrast-toggle`} onClick={() => setClearerText((value) => !value)} aria-pressed={clearerText} title="글씨 대비 조절"><Sun size={14} /> 선명</button><button className={`button ${drawEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setDrawEnabled((value) => !value); setEraseEnabled(false); }} aria-pressed={drawEnabled}><Pencil size={14} /> {drawEnabled ? '필기 중' : '필기'}</button><button className={`button ${eraseEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setEraseEnabled((value) => !value); setDrawEnabled(false); }} aria-label={eraseEnabled ? '지우개 사용 중' : '지우개 모드'} aria-pressed={eraseEnabled}><Eraser size={14} /> {eraseEnabled ? '지우는 중' : '지우개'}</button>{drawEnabled && <><label className="pdf-pen-size">굵기 <select value={penSize} onChange={(event) => setPenSize(Number(event.target.value))} aria-label="펜 굵기"><option value={1.5}>가는 선</option><option value={2.5}>보통</option><option value={4}>굵은 선</option></select></label><div className="pdf-pen-colors" role="group" aria-label="펜 색상">{[{ color: '#20232a', name: '검정' }, { color: '#2563eb', name: '파랑' }, { color: '#d33f49', name: '빨강' }, { color: '#16845b', name: '초록' }].map(({ color, name }) => <button type="button" key={color} className={`pdf-pen-color ${penColor === color ? 'selected' : ''}`} style={{ '--pen-color': color }} onClick={() => setPenColor(color)} aria-label={`${name} 펜`} aria-pressed={penColor === color} />)}</div></>}<small className="pdf-pen-hint">{drawEnabled || eraseEnabled ? 'S펜 전용 · 손가락은 페이지 이동' : '필기 버튼을 누른 뒤 S펜 사용'}</small></div><div className="pdf-canvas-frame" ref={frameRef} onPointerDown={handlePdfPointerDown} onPointerMove={handlePdfPointerMove} onPointerUp={handlePdfPointerUp} onPointerCancel={handlePdfPointerUp} onWheel={handlePdfWheel}>{pdf ? <div className="pdf-document-page" style={{ width: pageSize.width || undefined, height: pageSize.height || undefined, transform: `translate(${pdfPan.x}px, ${pdfPan.y}px) scale(${pdfZoom})`, transformOrigin: 'center top' }}><canvas ref={canvasRef} className={clearerText ? 'pdf-clearer-text' : ''} aria-label={`시험지 ${page}쪽`} /><canvas ref={inkCanvasRef} className={`pdf-ink-canvas ${drawEnabled || eraseEnabled ? 'ink-enabled' : ''} ${eraseEnabled ? 'ink-erasing' : ''}`} onPointerDown={beginInk} onPointerMove={moveInk} onPointerUp={endInk} onPointerCancel={endInk} aria-label={eraseEnabled ? 'S펜으로 지울 필기를 눌러 지우세요' : 'S펜 전용 PDF 필기 영역'} /></div> : <span>원본 PDF 여는 중…</span>}</div></section></div>}
+    {loadError ? <section className="pdf-load-error"><p>{loadError}</p><button className="button button-secondary" onClick={exit}>목록으로</button></section> : <div className="pdf-exam-layout"><section className="pdf-page-area"><div className="pdf-page-toolbar"><button className="button button-secondary" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ArrowLeft size={14} /> 이전</button><span><FileText size={14} /> {page} / {pageCount || '…'} 쪽</span><button className="button button-secondary" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>다음 <ArrowRight size={14} /></button><button className={`button ${clearerText ? 'button-primary' : 'button-secondary'} pdf-contrast-toggle`} onClick={() => setClearerText((value) => !value)} aria-pressed={clearerText} title="글씨 대비 조절"><Sun size={14} /> 선명</button><button className={`button ${drawEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setDrawEnabled((value) => !value); setEraseEnabled(false); }} aria-pressed={drawEnabled}><Pencil size={14} /> {drawEnabled ? '필기 중' : '필기'}</button><button className={`button ${eraseEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setEraseEnabled((value) => !value); setDrawEnabled(false); }} aria-label={eraseEnabled ? '지우개 사용 중' : '지우개 모드'} aria-pressed={eraseEnabled}><Eraser size={14} /> {eraseEnabled ? '지우는 중' : '지우개'}</button>{drawEnabled && <><label className="pdf-pen-size">굵기 <select value={penSize} onChange={(event) => setPenSize(Number(event.target.value))} aria-label="펜 굵기"><option value={1.5}>가는 선</option><option value={2.5}>보통</option><option value={4}>굵은 선</option></select></label><div className="pdf-pen-colors" role="group" aria-label="펜 색상">{[{ color: '#20232a', name: '검정' }, { color: '#2563eb', name: '파랑' }, { color: '#d33f49', name: '빨강' }, { color: '#16845b', name: '초록' }].map(({ color, name }) => <button type="button" key={color} className={`pdf-pen-color ${penColor === color ? 'selected' : ''}`} style={{ '--pen-color': color }} onClick={() => setPenColor(color)} aria-label={`${name} 펜`} aria-pressed={penColor === color} />)}</div></>}<small className="pdf-pen-hint">{eraseEnabled ? 'S펜은 항상 바로 필기 · 현재는 지우개 모드' : 'S펜은 항상 바로 필기 · 손가락 이동 · 두 손가락 확대/축소'}</small></div><div className="pdf-canvas-frame" ref={frameRef} onPointerDown={handlePdfPointerDown} onPointerMove={handlePdfPointerMove} onPointerUp={handlePdfPointerUp} onPointerCancel={handlePdfPointerUp} onWheel={handlePdfWheel}>{pdf ? <div className="pdf-document-page" style={{ width: pageSize.width || undefined, height: pageSize.height || undefined, transform: `translate(${pdfPan.x}px, ${pdfPan.y}px) scale(${pdfZoom})`, transformOrigin: 'center top' }}><canvas ref={canvasRef} className={clearerText ? 'pdf-clearer-text' : ''} aria-label={`시험지 ${page}쪽`} /><canvas ref={inkCanvasRef} className={`pdf-ink-canvas ${drawEnabled || eraseEnabled ? 'ink-enabled' : ''} ${eraseEnabled ? 'ink-erasing' : ''}`} onPointerDown={beginInk} onPointerMove={moveInk} onPointerUp={endInk} onPointerCancel={endInk} aria-label={eraseEnabled ? 'S펜으로 지울 필기를 눌러 지우세요' : 'S펜 전용 PDF 필기 영역'} /></div> : <span>원본 PDF 여는 중…</span>}</div></section></div>}
     {!viewOnly && !submitted && <button className="omr-mobile-trigger" onClick={() => setOmrOpen(true)}><Grid3X3 size={17} /> OMR 답안 <span>{Object.keys(answers).length}/{exam.total}</span></button>}
     {omrOpen && <div className="omr-mobile-backdrop" onClick={() => setOmrOpen(false)}><section className="omr-mobile-sheet" onClick={(event) => event.stopPropagation()}><div className="omr-sheet-grabber"/><div className="omr-heading"><div><span className="eyebrow">ANSWER SHEET</span><h2>OMR 답안</h2></div><button className="button button-secondary" onClick={() => setOmrOpen(false)}>닫기</button></div><div className="omr-progress"><span style={{ width: `${Object.keys(answers).length / exam.total * 100}%` }} /></div><div className="omr-mobile-grid">{Array.from({ length: exam.total }, (_, i) => i + 1).map((number) => <div className="omr-row" key={number}><span className={`omr-number ${answers[number] ? 'answered' : ''}`}>{number}</span><div className="omr-options">{[1, 2, 3, 4, 5].map((answer) => <button key={answer} className={answers[number] === answer ? 'chosen' : ''} aria-label={`${number}번 ${answer}번 선택`} onClick={() => setAnswers((previous) => ({ ...previous, [number]: answer }))}>{answer}</button>)}</div></div>)}</div><button className="button button-primary omr-submit" onClick={submit}><Check size={15} /> 답안 제출 및 채점</button></section></div>}
   </main>;
