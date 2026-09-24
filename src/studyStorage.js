@@ -1,5 +1,29 @@
+import { readCalendarData } from './calendarStorage.js';
+
 const STORAGE_KEY = 'suneung-study-attempts-v1';
 const QUESTION_BANK_KEY = 'suneung-imported-questions-v1';
+const PRACTICE_DRAFT_PREFIX = 'suneung-practice-draft-v1:';
+
+export function getPracticeDraft(subjectId) {
+  try {
+    const draft = JSON.parse(localStorage.getItem(`${PRACTICE_DRAFT_PREFIX}${subjectId}`) || 'null');
+    return draft && typeof draft === 'object' ? draft : null;
+  } catch { return null; }
+}
+
+export function savePracticeDraft(subjectId, patch) {
+  try {
+    const key = `${PRACTICE_DRAFT_PREFIX}${subjectId}`;
+    const previous = getPracticeDraft(subjectId) || {};
+    localStorage.setItem(key, JSON.stringify({ ...previous, ...patch, updatedAt: new Date().toISOString() }));
+    return true;
+  } catch { return false; }
+}
+
+export function deletePracticeDraft(subjectId) {
+  try { localStorage.removeItem(`${PRACTICE_DRAFT_PREFIX}${subjectId}`); return true; }
+  catch { return false; }
+}
 
 export function readAttempts() {
   try {
@@ -75,6 +99,7 @@ export function deleteImportedQuestion(subjectId, questionId) {
 
 export function getAnalytics() {
   const attempts = readAttempts();
+  const calendar = readCalendarData();
   const totals = attempts.reduce((result, attempt) => ({
     questions: result.questions + attempt.total,
     correct: result.correct + attempt.correct,
@@ -86,6 +111,20 @@ export function getAnalytics() {
     result[attempt.subjectId] = row;
     return result;
   }, {})).sort((a, b) => a.correct / a.total - b.correct / b.total);
+  const studyRows = [
+    ...attempts.map((attempt) => ({ subjectId: attempt.subjectId, subjectName: attempt.subjectName, minutes: Math.max(0, Math.round((attempt.durationSeconds || 0) / 60)) })),
+    ...calendar.logs.filter((log) => log.label !== '실전 풀이').map((log) => ({ subjectId: log.subjectId, subjectName: log.subjectName, minutes: Math.max(0, Number(log.minutes) || 0) })),
+  ];
+  const studyBySubject = Object.values(studyRows.reduce((result, row) => {
+    const current = result[row.subjectId] || { id: row.subjectId, name: row.subjectName, minutes: 0 };
+    current.minutes += row.minutes;
+    result[row.subjectId] = current;
+    return result;
+  }, {})).sort((a, b) => b.minutes - a.minutes);
+  const reasonCounts = attempts.flatMap((attempt) => (attempt.wrongReviews || []).map((review) => review.reason).filter(Boolean)).reduce((counts, reason) => {
+    counts[reason] = (counts[reason] || 0) + 1;
+    return counts;
+  }, {});
 
   return {
     attempts: attempts.length,
@@ -94,5 +133,8 @@ export function getAnalytics() {
     accuracy: totals.questions ? Math.round((totals.correct / totals.questions) * 100) : 0,
     weakSubject: subjects[0] || null,
     recentScores: attempts.slice(0, 7).reverse().map((attempt) => Math.round((attempt.correct / attempt.total) * 100)),
+    studyMinutes: studyRows.reduce((sum, row) => sum + row.minutes, 0),
+    studyBySubject,
+    mistakeReasons: Object.entries(reasonCounts).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
   };
 }

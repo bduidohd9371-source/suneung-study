@@ -9,14 +9,15 @@ export function readWordCards(subjectId) {
   return Array.isArray(value) ? value : [];
 }
 
-export function saveWordCards(subjectId, sourceName, words) {
+export function saveWordCards(subjectId, sourceName, words, { dailyNewLimit = 0 } = {}) {
   try {
     const all = readAll();
     const createdAt = new Date().toISOString();
+    const createdMs = Date.parse(createdAt);
     all[subjectId] = [...(Array.isArray(all[subjectId]) ? all[subjectId] : []), ...words.map((word, index) => ({
       id: globalThis.crypto?.randomUUID?.() || `word-${Date.now()}-${index}`,
-      subjectId, sourceName, word: word.word.trim(), meaning: word.meaning.trim(),
-      createdAt, dueAt: createdAt, repetitions: 0, intervalDays: 0,
+      subjectId, sourceName: word.sourceName || sourceName, sourceSection: word.sourceSection || '', word: word.word.trim(), meaning: word.meaning.trim(),
+      createdAt, dueAt: new Date(createdMs + (dailyNewLimit > 0 ? Math.floor(index / dailyNewLimit) * 86_400_000 : 0)).toISOString(), repetitions: 0, intervalDays: 0,
     }))];
     localStorage.setItem(VOCAB_KEY, JSON.stringify(all));
     window.dispatchEvent(new Event('suneung:vocabulary-updated'));

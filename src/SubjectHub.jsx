@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, BookOpenCheck, FileText, Layers3, ListChecks, NotebookPen, Plus, Trash2 } from 'lucide-react';
-import { deletePdfExam, listPdfExams, savePdfExam } from './pdfStorage.js';
+import { ArrowLeft, BookOpenCheck, FileText, Layers3, ListChecks, Plus, Trash2 } from 'lucide-react';
+import { deletePdfExam, getPdfExamDraft, listPdfExams, savePdfExam } from './pdfStorage.js';
+import { getPracticeDraft } from './studyStorage.js';
+import QuestionBank from './QuestionBank.jsx';
 import VocabStudio from './VocabStudio.jsx';
 
-const MODES = [
-  { id: 'problem', icon: ListChecks, title: '문제 풀이', text: '모의 문제와 PDF 시험지·OMR로 실전 연습' },
-  { id: 'concept', icon: NotebookPen, title: '개념 복습', text: '개념 노트를 PDF로 열고 읽으며 필기' },
-  { id: 'vocab', icon: BookOpenCheck, title: '단어 암기', text: '단어 자료에서 단어장을 만들고 반복 복습' },
-];
-
 export default function SubjectHub({ subject, onExit, onStartPractice, onUploadExam, onOpenExam, onOpenConcept }) {
-  const [mode, setMode] = useState('');
+  const [vocabOpen, setVocabOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
   const [concepts, setConcepts] = useState([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -40,21 +37,23 @@ export default function SubjectHub({ subject, onExit, onStartPractice, onUploadE
     catch { setError('개념 자료를 삭제하지 못했어요.'); }
   }
 
-  if (mode === 'vocab') return <VocabStudio subject={subject} onBack={() => setMode('')} />;
+  if (vocabOpen) return <VocabStudio subject={subject} onBack={() => setVocabOpen(false)} />;
+  if (bankOpen) return <QuestionBank initialSubject={subject} onExit={() => setBankOpen(false)} onStart={onStartPractice} />;
+  const practiceDraft = getPracticeDraft(subject.id);
 
-  return <main className="hub-shell"><header className="hub-header"><button className="icon-button" onClick={mode ? () => setMode('') : onExit} aria-label="뒤로"><ArrowLeft size={18} /></button><div><span className="eyebrow">SUBJECT STUDY SPACE</span><h1>{subject.name} 공부방</h1></div><span className={`subject-icon ${subject.color}`}>{subject.icon}</span></header>
-    {!mode ? <><p className="hub-intro">공부할 자료와 오늘의 목적에 맞는 방식을 골라요.</p><section className="hub-mode-grid">{MODES.map(({ id, icon: Icon, title, text }) => <button className="hub-mode-card" key={id} onClick={() => setMode(id)}><span><Icon size={19} /></span><strong>{title}</strong><small>{text}</small></button>)}</section></> : mode === 'problem' ? <>
-      <section className="hub-section-head"><div><span className="eyebrow">PROBLEM SOLVING</span><h2>문제 풀이</h2></div></section><button className="button button-primary hub-action" onClick={() => onStartPractice(subject)}><ListChecks size={16} /> 기본 제공 문제 풀이</button><button className="button button-secondary hub-action" onClick={() => onUploadExam(subject)}><Plus size={16} /> PDF 시험지 추가 · OMR</button>
-      <section className="hub-resource-list"><h3>저장된 시험지</h3><ExamList subjectId={subject.id} onOpen={onOpenExam} />{error && <p className="import-error">{error}</p>}</section>
-    </> : <>
-      <section className="hub-section-head"><div><span className="eyebrow">CONCEPT NOTES</span><h2>개념 자료</h2></div><label className={`file-pick ${saving ? 'disabled' : ''}`}><input type="file" accept="application/pdf,.pdf" disabled={saving} onChange={addConcept} /><Plus size={15} /> {saving ? '저장 중…' : 'PDF 추가'}</label></section><p className="hub-helper">수학 미적분, 생활과 윤리, 사회문화 등 과목과 관계없이 개념 PDF를 추가할 수 있어요. 자료를 열어 S펜으로 읽고 필기하세요.</p>{error && <p className="import-error">{error}</p>}
-      <section className="hub-resource-list">{concepts.length ? concepts.map((resource) => <article className="hub-resource-row" key={resource.id}><button onClick={() => onOpenConcept(resource)}><FileText size={17} /><span><strong>{resource.name}</strong><small>{new Date(resource.createdAt).toLocaleDateString('ko-KR')}</small></span></button><button className="saved-pdf-delete" aria-label={`${resource.name} 삭제`} onClick={() => removeConcept(resource)}><Trash2 size={14} /></button></article>) : <div className="hub-empty"><Layers3 size={23} /><p>아직 올린 개념 PDF가 없어요.</p></div>}</section>
-    </>}
+  return <main className="hub-shell"><header className="hub-header"><button className="icon-button" onClick={onExit} aria-label="과목 목록으로"><ArrowLeft size={18} /></button><div><span className="eyebrow">SUBJECT STUDY SPACE</span><h1>{subject.name} 공부방</h1></div><span className={`subject-icon ${subject.color}`}>{subject.icon}</span></header>
+    <p className="hub-intro">{subject.name} 실전 풀이, 기출 PDF, 개념 복습 자료를 한곳에서 관리해요.</p>
+    <section className="hub-dashboard-top"><div className="hub-start-panel"><span className="eyebrow">실전 연습</span><h2>{subject.name} 기본 제공 문항</h2><p>앱에 포함된 짧은 연습 문항이에요. 기출 PDF는 아래 문제 목록에서 원본 그대로 열 수 있어요.</p><div className="hub-practice-actions"><button className="button button-primary" onClick={() => onStartPractice(subject)}><ListChecks size={15} /> {practiceDraft ? practiceDraft.submitted ? '오답 기록 이어서 쓰기' : `연습 이어하기 · ${Object.keys(practiceDraft.answers || {}).length}개 답 저장` : `기본 제공 연습 시작 · ${subject.minutes}분`}</button><button className="button button-secondary" onClick={() => setBankOpen(true)}>기본 문항 목록</button></div></div></section>
+
+    <section className="hub-resource-section"><div className="hub-section-head"><div><span className="eyebrow">QUESTION LIBRARY</span><h2>문제 목록</h2><p className="hub-section-note">올린 기출·모의고사 PDF를 선택해 원본 그대로 풀어요.</p></div><button className="button button-secondary" onClick={() => onUploadExam(subject)}><Plus size={14} /> 시험지 추가</button></div><ExamList subjectId={subject.id} onOpen={onOpenExam} /></section>
+
+    <section className="hub-resource-section"><div className="hub-section-head"><div><span className="eyebrow">CONCEPT NOTES</span><h2>개념 복습</h2><p className="hub-section-note">개념 노트 PDF를 열어 읽고 화면에 필기해요.</p></div><div className="hub-resource-actions">{['english', 'korean'].includes(subject.id) && <button className="button button-secondary" onClick={() => setVocabOpen(true)}><BookOpenCheck size={14} /> {subject.id === 'korean' ? '고전 어휘 단어장' : '영어 단어장'}</button>}<label className={`file-pick ${saving ? 'disabled' : ''}`}><input type="file" accept="application/pdf,.pdf" disabled={saving} onChange={addConcept} /><Plus size={15} /> {saving ? '저장 중…' : '개념 PDF 추가'}</label></div></div>{error && <p className="import-error" role="alert">{error}</p>}<section className="hub-resource-list">{concepts.length ? concepts.map((resource) => <article className="hub-resource-row" key={resource.id}><button onClick={() => onOpenConcept(resource)}><FileText size={17} /><span><strong>{resource.name}</strong><small>{new Date(resource.createdAt).toLocaleDateString('ko-KR')}</small></span></button><button className="saved-pdf-delete" aria-label={`${resource.name} 삭제`} onClick={() => removeConcept(resource)}><Trash2 size={14} /></button></article>) : <div className="hub-empty"><Layers3 size={23} /><p>아직 올린 개념 PDF가 없어요.</p></div>}</section></section>
+    <footer className="hub-footer-note">자료는 이 기기에 저장돼요.</footer>
   </main>;
 }
 
 function ExamList({ subjectId, onOpen }) {
   const [exams, setExams] = useState([]);
-  useEffect(() => { let live = true; listPdfExams({ subjectId, kind: 'exam' }).then((items) => { if (live) setExams(items); }).catch(() => {}); return () => { live = false; }; }, [subjectId]);
-  return exams.length ? exams.map((exam) => <article className="hub-resource-row" key={exam.id}><button onClick={() => onOpen(exam)}><FileText size={17} /><span><strong>{exam.name}</strong><small>{exam.total}문항 · {new Date(exam.createdAt).toLocaleDateString('ko-KR')}</small></span></button><span className="hub-resource-arrow">열기</span></article>) : <div className="hub-empty"><FileText size={22} /><p>저장된 PDF 시험지가 없어요.</p></div>;
+  useEffect(() => { let live = true; listPdfExams({ subjectId, kind: 'exam' }).then(async (items) => { const prepared = await Promise.all(items.map(async (exam) => ({ ...exam, draft: await getPdfExamDraft(exam.id) }))); if (live) setExams(prepared); }).catch(() => {}); return () => { live = false; }; }, [subjectId]);
+  return exams.length ? <div className="hub-resource-list">{exams.map((exam) => <article className="hub-resource-row" key={exam.id}><button onClick={() => onOpen(exam)}><FileText size={17} /><span><strong>{exam.name}</strong><small>{exam.draft ? `이전 풀이 이어하기 · ${Object.keys(exam.draft.answers || {}).length}/${exam.total}개 답 저장` : `${exam.total}문항 · ${new Date(exam.createdAt).toLocaleDateString('ko-KR')}`}</small></span></button><span className="hub-resource-arrow">{exam.draft ? '이어 풀기' : '열기'}</span></article>)}</div> : <div className="hub-empty"><FileText size={22} /><p>저장된 시험지가 없어요. PDF 시험지와 정답표를 추가해 보세요.</p></div>;
 }

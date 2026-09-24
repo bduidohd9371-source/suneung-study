@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, BookOpenCheck, CalendarDays, Check, Clock3, Moon, Play, Sun, Target, Zap } from 'lucide-react';
+import { ArrowRight, Award, BarChart3, BookOpenCheck, CalendarDays, Moon, Play, Sun, Target, Zap } from 'lucide-react';
 import { CSAT_DATE, SUBJECTS } from './csat.js';
 import ExamSession from './ExamSession.jsx';
 import { getAnalytics } from './studyStorage.js';
 import { getPdfExam } from './pdfStorage.js';
 import QuickStart from './QuickStart.jsx';
+import GrowthCard from './GrowthCard.jsx';
+const DataBackup = lazy(() => import('./DataBackup.jsx'));
 const PdfImport = lazy(() => import('./PdfImport.jsx'));
-const QuestionBank = lazy(() => import('./QuestionBank.jsx'));
 const PdfExam = lazy(() => import('./PdfExam.jsx'));
 const DueReviews = lazy(() => import('./DueReviews.jsx'));
 const SubjectHub = lazy(() => import('./SubjectHub.jsx'));
@@ -32,43 +33,15 @@ function useCountdown(target) {
   return { days: Math.floor(left / 86_400_000), hours: Math.floor((left / 3_600_000) % 24), minutes: Math.floor((left / 60_000) % 60), seconds: Math.floor((left / 1000) % 60), passed: left === 0 };
 }
 
-function formatClock(seconds) {
-  const safe = Math.max(0, seconds);
-  return [Math.floor(safe / 3600), Math.floor((safe % 3600) / 60), safe % 60]
-    .map((part) => String(part).padStart(2, '0')).join(':');
-}
-
-function ExamTimer({ subject }) {
-  const [remaining, setRemaining] = useState(subject.minutes * 60);
-  const [running, setRunning] = useState(false);
-  useEffect(() => {
-    setRemaining(subject.minutes * 60);
-    setRunning(false);
-  }, [subject]);
-  useEffect(() => {
-    if (!running || remaining <= 0) return undefined;
-    const id = window.setInterval(() => setRemaining((value) => Math.max(0, value - 1)), 1000);
-    return () => window.clearInterval(id);
-  }, [running, remaining]);
-  const progress = 1 - remaining / (subject.minutes * 60);
-  return (
-    <section className="timer-card" aria-label={`${subject.name} 실전 타이머`}>
-      <div className="timer-top"><div><span className="eyebrow">실전 타이머</span><h2>{subject.name} 시간 관리</h2></div><span className="timer-chip"><Clock3 size={14} /> {subject.minutes}분</span></div>
-      <div className="timer-readout" role="timer" aria-live="off">{formatClock(remaining)}</div>
-      <div className="progress-track" role="progressbar" aria-label="사용한 시험 시간" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress * 100)}><span style={{ width: `${progress * 100}%` }} /></div>
-      <div className="timer-actions"><span className="timer-hint">{remaining === 0 ? '시험 시간이 종료됐어요' : running ? '집중해서 풀어보세요' : '준비가 되면 시작하세요'}</span><button className="button button-primary timer-button" onClick={() => remaining > 0 && setRunning(!running)}>{running ? '일시정지' : remaining === 0 ? '종료' : '시작'} <ArrowRight size={16} /></button></div>
-    </section>
-  );
-}
-
 function HomeNavigation({ active, onSelect, onCalendar }) {
   const items = [
     { id: 'today', icon: <Play size={19} />, title: '오늘 루틴', note: '집중 타이머' },
     { id: 'practice', icon: <BookOpenCheck size={19} />, title: '실전·자료', note: '과목 · PDF · 문제' },
     { id: 'progress', icon: <BarChart3 size={19} />, title: '점수·복습', note: '기록 · 오답' },
     { id: 'calendar', icon: <CalendarDays size={19} />, title: '달력·계획', note: '일정 · 공부량' },
+    { id: 'growth', icon: <Award size={19} />, title: '내 성장기록', note: '레벨 · 랭크 · 배지' },
   ];
-  return <nav className="home-menu-grid" aria-label="주요 메뉴">{items.map((item) => <button key={item.id} className={active === item.id ? 'active' : ''} onClick={() => item.id === 'calendar' ? onCalendar() : onSelect(item.id)} aria-pressed={item.id === 'calendar' ? undefined : active === item.id}><span className="home-menu-icon">{item.icon}</span><span className="home-menu-copy"><strong>{item.title}</strong><small>{item.note}</small></span><ArrowRight className="home-menu-arrow" size={15} /></button>)}</nav>;
+  return <nav className="home-menu-grid has-growth" aria-label="주요 메뉴">{items.map((item) => <button key={item.id} className={active === item.id ? 'active' : ''} onClick={() => item.id === 'calendar' ? onCalendar() : onSelect(item.id)} aria-pressed={item.id === 'calendar' ? undefined : active === item.id}><span className="home-menu-icon">{item.icon}</span><span className="home-menu-copy"><strong>{item.title}</strong><small>{item.note}</small></span><ArrowRight className="home-menu-arrow" size={15} /></button>)}</nav>;
 }
 
 function App() {
@@ -76,8 +49,8 @@ function App() {
   const [selected, setSelected] = useState(SUBJECTS[0]);
   const [examActive, setExamActive] = useState(false);
   const [pdfImportActive, setPdfImportActive] = useState(false);
-  const [bankActive, setBankActive] = useState(false);
   const [hubActive, setHubActive] = useState(false);
+  const [examReturnToHub, setExamReturnToHub] = useState(false);
   const [calendarActive, setCalendarActive] = useState(false);
   const [homeTab, setHomeTab] = useState('today');
   const [pdfExam, setPdfExam] = useState(null);
@@ -91,9 +64,11 @@ function App() {
   useEffect(() => {
     const refreshAnalytics = () => setAnalytics(getAnalytics());
     window.addEventListener('suneung:stats-updated', refreshAnalytics);
+    window.addEventListener('suneung:calendar-updated', refreshAnalytics);
     window.addEventListener('storage', refreshAnalytics);
     return () => {
       window.removeEventListener('suneung:stats-updated', refreshAnalytics);
+      window.removeEventListener('suneung:calendar-updated', refreshAnalytics);
       window.removeEventListener('storage', refreshAnalytics);
     };
   }, []);
@@ -101,9 +76,8 @@ function App() {
   if (pdfExam) return <Suspense fallback={<main className="pdf-exam-shell"><p>PDF 자료를 여는 중…</p></main>}><PdfExam exam={pdfExam} viewOnly={pdfReadOnly} onExit={() => { setPdfExam(null); setPdfReadOnly(false); if (pdfReturnToHub) setHubActive(true); setPdfReturnToHub(false); }} /></Suspense>;
   if (calendarActive) return <Suspense fallback={<main className="calendar-shell"><p>달력을 여는 중…</p></main>}><StudyCalendar onExit={() => setCalendarActive(false)} /></Suspense>;
   if (pdfImportActive) return <Suspense fallback={<main className="import-shell"><p>PDF 도구를 불러오는 중…</p></main>}><PdfImport initialSubject={selected} onExit={() => { setPdfImportActive(false); if (pdfReturnToHub) setHubActive(true); setPdfReturnToHub(false); }} onStart={(exam) => { setSelected(SUBJECTS.find((subject) => subject.id === exam.subjectId) || SUBJECTS[0]); setPdfImportActive(false); setPdfReadOnly(false); setPdfExam(exam); }} /></Suspense>;
-  if (hubActive) return <Suspense fallback={<main className="hub-shell"><p>과목 공부방을 여는 중…</p></main>}><SubjectHub subject={selected} onExit={() => setHubActive(false)} onStartPractice={(subject) => { setSelected(subject); setHubActive(false); setExamActive(true); }} onUploadExam={(subject) => { setSelected(subject); setPdfReturnToHub(true); setHubActive(false); setPdfImportActive(true); }} onOpenExam={(exam) => { setPdfReturnToHub(true); setPdfReadOnly(false); setPdfExam(exam); }} onOpenConcept={(resource) => { setPdfReturnToHub(true); setPdfReadOnly(true); setPdfExam(resource); }} /></Suspense>;
-  if (bankActive) return <Suspense fallback={<main className="bank-shell"><p>문제 목록을 불러오는 중…</p></main>}><QuestionBank initialSubject={selected} onExit={() => setBankActive(false)} onStart={(subject) => { setSelected(subject); setBankActive(false); setExamActive(true); }} /></Suspense>;
-  if (examActive) return <ExamSession subject={selected} onExit={() => setExamActive(false)} />;
+  if (hubActive) return <Suspense fallback={<main className="hub-shell"><p>과목 공부방을 여는 중…</p></main>}><SubjectHub subject={selected} onExit={() => setHubActive(false)} onStartPractice={(subject) => { setSelected(subject); setHubActive(false); setExamReturnToHub(true); setExamActive(true); }} onUploadExam={(subject) => { setSelected(subject); setPdfReturnToHub(true); setHubActive(false); setPdfImportActive(true); }} onOpenExam={(exam) => { setPdfReturnToHub(true); setPdfReadOnly(false); setPdfExam(exam); }} onOpenConcept={(resource) => { setPdfReturnToHub(true); setPdfReadOnly(true); setPdfExam(resource); }} /></Suspense>;
+  if (examActive) return <ExamSession subject={selected} onExit={() => { setExamActive(false); if (examReturnToHub) setHubActive(true); setExamReturnToHub(false); }} />;
 
   return (
     <main className="app-shell">
@@ -120,8 +94,9 @@ function App() {
         <QuickStart />
         <HomeNavigation active={homeTab} onSelect={setHomeTab} onCalendar={() => setCalendarActive(true)} />
         </>}
-        {homeTab === 'practice' && <section className="home-view"><section className="section-heading"><div><span className="eyebrow">YOUR STUDY, YOUR PACE</span><h2>실전 풀이와 자료</h2></div><div className="section-heading-actions"><button className="button button-secondary pdf-import-button" onClick={() => setBankActive(true)}><BookOpenCheck size={14} /> 문제 목록</button><button className="button button-secondary pdf-import-button" onClick={() => setPdfImportActive(true)}><BookOpenCheck size={14} /> PDF 시험지·OMR</button></div></section><section className="subject-grid" aria-label="과목 선택">{SUBJECTS.map((subject) => <button key={subject.id} className={`subject-card ${selected.id === subject.id ? 'is-selected' : ''}`} onClick={() => setSelected(subject)} aria-pressed={selected.id === subject.id}><span className={`subject-icon ${subject.color}`}>{subject.icon}</span><span className="subject-info"><strong>{subject.name}</strong><small>{subject.detail}</small></span><span className="subject-time">{subject.minutes}<small>분</small></span>{selected.id === subject.id && <span className="selected-check"><Check size={12} /></span>}</button>)}</section><div className="bottom-grid"><ExamTimer subject={selected} /><aside className="focus-card"><div className="focus-head"><span className="focus-icon"><Zap size={17} /></span><span className="eyebrow">실전 모드</span></div><h3>{selected.name} 실전 풀이</h3><p>{selected.minutes}분 시간 제한 · 제출하면 바로 채점해요.</p><button className="button button-primary start-exam-button" onClick={() => setExamActive(true)}>실전 풀이 시작 <ArrowRight size={16} /></button><button className="button button-secondary subject-hub-button" onClick={() => setHubActive(true)}>과목 공부방 열기 <ArrowRight size={15} /></button></aside></div></section>}
-        {homeTab === 'progress' && <section className="home-view progress-view"><section className="analytics-card"><div className="analytics-header"><div><span className="eyebrow">MY STUDY DATA</span><h2>내 점수와 취약 과목</h2></div><span className="local-save-label">이 기기에 저장</span></div>{analytics.attempts === 0 ? <p className="analytics-empty">실전 풀이 기록을 저장하면 점수 변화와 취약 과목이 여기에 보여요.</p> : <><div className="analytics-metrics"><div className="analytics-metric"><span>누적 풀이</span><strong>{analytics.attempts}<i>회</i></strong></div><div className="analytics-metric"><span>누적 정답률</span><strong>{analytics.accuracy}<i>%</i></strong></div><div className="analytics-metric weak-metric"><span>먼저 복습할 과목</span><strong>{analytics.weakSubject?.name}<i>{analytics.weakSubject ? `${Math.round((analytics.weakSubject.correct / analytics.weakSubject.total) * 100)}%` : ''}</i></strong></div></div>{analytics.recentScores.length > 0 && <div className="score-trend"><span>최근 정답률</span><div className="trend-bars" role="img" aria-label={`최근 풀이 정답률 ${analytics.recentScores.join(', ')}퍼센트`}>{analytics.recentScores.map((score, index) => <span key={`${index}-${score}`} title={`${score}%`}><i style={{ height: `${Math.max(8, score)}%` }} /></span>)}</div></div>}</>}</section><Suspense fallback={null}><DueReviews onOpenPdf={async (id) => { try { const exam = await getPdfExam(id); if (exam) setPdfExam(exam); } catch { /* the PDF library can be reopened from the home screen */ } }} /></Suspense></section>}
+        {homeTab === 'practice' && <section className="home-view"><section className="section-heading"><div><span className="eyebrow">YOUR STUDY, YOUR PACE</span><h2>과목 공부방 선택</h2><p className="hub-section-note">과목을 고르면 해당 과목의 실전, 시험지와 개념 자료를 볼 수 있어요.</p></div></section><section className="subject-grid" aria-label="과목 공부방">{SUBJECTS.map((subject) => <button key={subject.id} className={`subject-card ${selected.id === subject.id ? 'is-selected' : ''}`} onClick={() => { setSelected(subject); setHubActive(true); }}><span className={`subject-icon ${subject.color}`}>{subject.icon}</span><span className="subject-info"><strong>{subject.name}</strong><small>실전 · 문제 · 개념 자료</small></span><span className="subject-time">열기<small> →</small></span></button>)}</section></section>}
+        {homeTab === 'progress' && <section className="home-view progress-view"><section className="analytics-card"><div className="analytics-header"><div><span className="eyebrow">MY STUDY DATA</span><h2>점수와 공부량</h2></div><span className="local-save-label">이 기기에 저장</span></div><div className="analytics-metrics"><div className="analytics-metric"><span>실전 풀이</span><strong>{analytics.attempts}<i>회</i></strong></div><div className="analytics-metric"><span>누적 정답률</span><strong>{analytics.accuracy}<i>%</i></strong></div><div className="analytics-metric"><span>기록한 공부</span><strong>{Math.floor(analytics.studyMinutes / 60)}<i>시간</i> {analytics.studyMinutes % 60}<i>분</i></strong></div><div className="analytics-metric weak-metric"><span>먼저 복습할 과목</span><strong>{analytics.weakSubject?.name || '기록 없음'}<i>{analytics.weakSubject ? `${Math.round((analytics.weakSubject.correct / analytics.weakSubject.total) * 100)}%` : ''}</i></strong></div></div>{analytics.recentScores.length > 0 && <div className="score-trend"><span>최근 정답률</span><div className="trend-bars" role="img" aria-label={`최근 풀이 정답률 ${analytics.recentScores.join(', ')}퍼센트`}>{analytics.recentScores.map((score, index) => <span key={`${index}-${score}`} title={`${score}%`}><i style={{ height: `${Math.max(8, score)}%` }} /></span>)}</div></div>}{analytics.studyBySubject.length > 0 && <div className="analytics-breakdown"><h3>과목별 기록 시간</h3>{analytics.studyBySubject.map((row) => <div key={row.id}><span>{row.name}</span><strong>{row.minutes >= 60 ? `${Math.floor(row.minutes / 60)}시간 ${row.minutes % 60}분` : `${row.minutes}분`}</strong></div>)}</div>}{analytics.mistakeReasons.length > 0 && <div className="analytics-breakdown"><h3>자주 틀린 이유</h3>{analytics.mistakeReasons.slice(0, 3).map((row) => <div key={row.reason}><span>{row.reason}</span><strong>{row.count}회</strong></div>)}</div>}</section><Suspense fallback={null}><DueReviews onOpenPdf={async (id) => { try { const exam = await getPdfExam(id); if (exam) setPdfExam(exam); } catch { /* the PDF library can be reopened from the home screen */ } }} /><DataBackup /></Suspense></section>}
+        {homeTab === 'growth' && <section className="home-view growth-view"><GrowthCard studyMinutes={analytics.studyMinutes} /></section>}
         <footer className="footer"><span>© 2026 수능루틴</span><span>작은 복습이 쌓여 큰 실력이 됩니다.</span></footer>
       </div>
     </main>

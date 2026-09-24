@@ -51,8 +51,8 @@ export default function StudyCalendar({ onExit }) {
   const dayEvents = data.events.filter((event) => event.date === selectedDate).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const dayPlans = data.plans.filter((plan) => plan.date === selectedDate);
   const selected = localDate(selectedDate);
-  const currentWeek = weekKey(new Date());
-  const weeklyGoal = data.weekGoals[currentWeek] || '';
+  const selectedWeek = weekKey(selected);
+  const weeklyGoal = data.weekGoals[selectedWeek] || '';
 
   function weekKey(date) {
     const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -81,6 +81,18 @@ export default function StudyCalendar({ onExit }) {
     if (!planForm.trim()) return;
     updateData({ plans: [...data.plans, { id: makeId(), date: selectedDate, text: planForm.trim(), done: false }] });
     setPlanForm('');
+  }
+
+  function addSuggestedPlans() {
+    const existing = new Set(dayPlans.map((plan) => plan.text));
+    const suggestions = [
+      '기상 후 영어 단어 10분',
+      '첫 공부로 국어 독서 지문 25분',
+      ...(weeklyGoal.trim() ? ['이번 주 목표 20분 진행'] : []),
+    ].filter((text) => !existing.has(text));
+    if (!suggestions.length) { setNotice('추천 루틴이 이미 이 날짜에 있어요. 하나만 골라 시작해도 충분해요.'); return; }
+    updateData({ plans: [...data.plans, ...suggestions.map((text) => ({ id: makeId(), date: selectedDate, text, done: false }))] });
+    setNotice('작게 시작하는 루틴을 추가했어요. 다 하지 못해도 다음 날 다시 조정하면 돼요.');
   }
 
   function removeItem(key, id) { updateData({ [key]: data[key].filter((item) => item.id !== id) }); }
@@ -120,14 +132,14 @@ export default function StudyCalendar({ onExit }) {
       const isToday = date === dateKey(new Date());
       return <button key={date} className={`calendar-day ${date === selectedDate ? 'selected' : ''} ${isToday ? 'today' : ''}`} onClick={() => setSelectedDate(date)}><b>{Number(date.slice(-2))}</b>{subjectTotals.slice(0, 2).map((item) => <small className="calendar-subject-time" key={item.name}>{({ 국어: '국', 수학: '수', 영어: '영', 윤리: '윤', 사회: '사' })[item.name] || item.name?.slice(0, 1)} {item.minutes}분</small>)}{subjectTotals.length > 2 && <small className="calendar-extra-subjects">+{subjectTotals.length - 2}과목</small>}{events.length > 0 && <i className="calendar-event-dot" title={events.map((event) => event.title).join(', ')} />}{plans.length > 0 && <i className="calendar-plan-dot" title="계획 있음" />}</button>;
     })}</div></div><p className="calendar-legend"><span><i className="calendar-event-dot" /> 일정</span><span><i className="calendar-plan-dot" /> 계획</span><span>풀이 기록 시간은 자동 반영 · 다른 공부는 직접 기록</span></p>
-      <section className="week-goal-card"><div><span className="eyebrow">THIS WEEK</span><h3>이번 주 끝낼 것</h3></div><textarea value={weeklyGoal} onChange={(event) => updateData({ weekGoals: { ...data.weekGoals, [currentWeek]: event.target.value } })} rows={2} placeholder="예: 논술 초안 1개 완성, 독서 지문 5개 복습" /><small>주간 목표는 이 기기에 자동 저장돼요. 계획은 상담한 뒤 여기에 적어두면 돼요.</small></section>
+      <section className="week-goal-card"><div><span className="eyebrow">WEEK OF {selectedWeek}</span><h3>이번 주 끝낼 것</h3></div><textarea value={weeklyGoal} onChange={(event) => updateData({ weekGoals: { ...data.weekGoals, [selectedWeek]: event.target.value } })} rows={2} placeholder="예: 논술 초안 1개 완성, 독서 지문 5개 복습" /><small>선택한 날짜가 속한 주의 목표예요. 달력에서 다른 주를 골라 그 주 계획도 적을 수 있어요.</small></section>
       </section>
       <aside className="calendar-day-detail"><div className="calendar-selected-date"><span className="eyebrow">SELECTED DAY</span><h2>{selected.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}</h2></div>
         <section className="day-section"><h3>공부 기록</h3>{dayLogs.length ? dayLogs.map((log) => <div className="day-log-row" key={log.id}><span><b>{log.subjectName}</b><small>{log.activity || log.label}{log.amount ? ` · ${log.amount}${log.unit === '정답' ? ' 정답' : log.unit}` : ''}</small></span><strong>{log.minutes}분</strong>{log.label !== '실전 풀이' && <button onClick={() => removeItem('logs', log.id)} aria-label="공부 기록 삭제"><Trash2 size={13} /></button>}</div>) : <p className="calendar-muted">아직 기록이 없어요.</p>}
           <form className="calendar-form" onSubmit={addLog}><select value={logForm.subjectId} onChange={(event) => setLogForm({ ...logForm, subjectId: event.target.value })}>{SUBJECTS.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select><input value={logForm.activity} onChange={(event) => setLogForm({ ...logForm, activity: event.target.value })} placeholder="공부 내용" /><div className="calendar-form-inline"><input type="number" min="1" max="1440" value={logForm.minutes} onChange={(event) => setLogForm({ ...logForm, minutes: event.target.value })} placeholder="분" /><input value={logForm.amount} onChange={(event) => setLogForm({ ...logForm, amount: event.target.value })} placeholder="양(선택)" /><select value={logForm.unit} onChange={(event) => setLogForm({ ...logForm, unit: event.target.value })}>{['문항', '쪽', '단어', '세트'].map((unit) => <option key={unit}>{unit}</option>)}</select><button aria-label="공부 기록 추가"><Plus size={15} /></button></div><small>시간은 필수, 공부한 양은 선택이에요.</small></form>
         </section>
         <section className="day-section"><h3>일정</h3>{dayEvents.map((event) => <div className="day-event-row" key={event.id}><span>{event.time && <b>{event.time} · </b>}{event.type} · {event.title}</span><button onClick={() => removeItem('events', event.id)} aria-label="일정 삭제"><Trash2 size={13} /></button></div>)}<form className="calendar-form" onSubmit={addEvent}><div className="calendar-form-inline"><select value={eventForm.type} onChange={(event) => setEventForm({ ...eventForm, type: event.target.value })}>{['논술', '학원', '개인 일정', '마감'].map((type) => <option key={type}>{type}</option>)}</select><input type="time" value={eventForm.time} onChange={(event) => setEventForm({ ...eventForm, time: event.target.value })} /></div><div className="calendar-form-inline"><input value={eventForm.title} onChange={(event) => setEventForm({ ...eventForm, title: event.target.value })} placeholder="일정 이름" /><button aria-label="일정 추가"><Plus size={15} /></button></div></form></section>
-        <section className="day-section"><h3>오늘 할 일</h3>{dayPlans.map((plan) => <div className="day-plan-row" key={plan.id}><label><input type="checkbox" checked={plan.done} onChange={() => togglePlan(plan.id)} /><span className={plan.done ? 'done' : ''}>{plan.text}</span></label><button onClick={() => removeItem('plans', plan.id)} aria-label="할 일 삭제"><Trash2 size={13} /></button></div>)}<form className="calendar-form calendar-form-inline" onSubmit={addPlan}><input value={planForm} onChange={(event) => setPlanForm(event.target.value)} placeholder="예: 국어 독서 지문 1개" /><button aria-label="오늘 할 일 추가"><Plus size={15} /></button></form></section>
+        <section className="day-section"><div className="day-section-title-row"><h3>오늘 할 일</h3><button type="button" className="plan-suggestion-button" onClick={addSuggestedPlans}>작은 계획 추천</button></div>{dayPlans.map((plan) => <div className="day-plan-row" key={plan.id}><label><input type="checkbox" checked={plan.done} onChange={() => togglePlan(plan.id)} /><span className={plan.done ? 'done' : ''}>{plan.text}</span></label><button onClick={() => removeItem('plans', plan.id)} aria-label="할 일 삭제"><Trash2 size={13} /></button></div>)}<p className="routine-hint">추천 루틴은 상담에서 정한 기상 후 영어 10분과 스카 첫 공부 국어 25분을 바탕으로 해요. 주간 목표가 있으면 20분 진행도 제안해요.</p><form className="calendar-form calendar-form-inline" onSubmit={addPlan}><input value={planForm} onChange={(event) => setPlanForm(event.target.value)} placeholder="예: 국어 독서 지문 1개" /><button aria-label="오늘 할 일 추가"><Plus size={15} /></button></form></section>
         <section className="day-section"><h3>생활 리듬 <small>선택 · 기상 목표는 7시부터 천천히</small></h3><form key={selectedDate} className="calendar-form calendar-form-inline" onSubmit={saveSleep}><label>잠든 시간<input name="sleep" type="time" defaultValue={data.sleep[selectedDate]?.sleep || ''} /></label><label>기상 시간<input name="wake" type="time" defaultValue={data.sleep[selectedDate]?.wake || ''} /></label><button className="sleep-save-button"><Check size={14} /></button></form><p className="routine-hint">기상 직후 영어 단어 10분, 스카 첫 공부는 국어로 시작하는 루틴을 기록해 둬요.</p></section>
         {notice && <p className="calendar-notice" role="status">{notice}</p>}
       </aside>
