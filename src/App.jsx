@@ -36,7 +36,6 @@ function useCountdown(target) {
 
 function HomeNavigation({ active, onSelect, onCalendar }) {
   const items = [
-    { id: 'today', icon: <Play size={19} />, title: '오늘 루틴', note: '집중 타이머' },
     { id: 'practice', icon: <BookOpenCheck size={19} />, title: '실전·자료', note: '과목 · PDF · 문제' },
     { id: 'progress', icon: <BarChart3 size={19} />, title: '점수·복습', note: '기록 · 오답' },
     { id: 'calendar', icon: <CalendarDays size={19} />, title: '달력·계획', note: '일정 · 공부량' },
