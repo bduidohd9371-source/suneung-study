@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Clock3, Eraser, FileText, Grid3X3, Pencil, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Clock3, Eraser, FileText, Grid3X3, Pencil, RotateCcw, Sun } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { deletePdfExamDraft, getPageMarks, getPdfExam, getPdfExamDraft, savePageMarks, savePdfExamDraft } from './pdfStorage.js';
@@ -341,6 +341,19 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     if (unanswered && !window.confirm(`${unanswered}문항이 비어 있어요. 미응답으로 제출할까요?`)) return;
     setSubmitted(true);
   }, [answers, exam.total]);
+
+  const replay = useCallback(() => {
+    setAnswers({});
+    setRemaining(exam.minutes * 60);
+    setPage(1);
+    setPdfZoom(1);
+    setPdfPan({ x: 0, y: 0 });
+    setSubmitted(false);
+    setSaved(false);
+    setReviewData({ topic: '', notes: {} });
+    setDraftLoaded(null);
+    setDraftSaveError(false);
+  }, [exam.minutes]);
   useEffect(() => {
     if (!submitted || saved) return;
     const correct = Object.entries(exam.answerKey).filter(([number, answer]) => answers[number] === answer).length;
@@ -357,7 +370,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
   if (submitted && !viewOnly) {
     const correct = Object.entries(exam.answerKey).filter(([number, answer]) => answers[number] === answer).length;
     const wrongQuestions = Array.from({ length: exam.total }, (_, i) => i + 1).filter((number) => answers[number] !== exam.answerKey[number]).map((number) => ({ number, myAnswer: answers[number] || null, correctAnswer: exam.answerKey[number] }));
-    return <main className="pdf-results-shell"><header className="bank-header"><button className="button button-secondary" onClick={exit}><ArrowLeft size={16} /> 나가기</button><div><span className="eyebrow">OMR RESULT</span><h1>{exam.name}</h1></div></header><section className="result-summary"><span className="eyebrow">{exam.subjectName} 채점 결과</span><h1>{correct}<span> / {exam.total}</span></h1><p>{Math.round(correct / exam.total * 100)}% 정답 · {saved ? '점수 기록 저장 완료' : '점수 기록 저장 중'}</p><div className="score-track"><span style={{ width: `${correct / exam.total * 100}%` }} /></div></section><section className="result-card"><div className="result-table-wrap"><table className="result-table"><thead><tr><th>문항</th><th>내 답</th><th>정답</th><th>결과</th></tr></thead><tbody>{Array.from({ length: exam.total }, (_, i) => i + 1).map((number) => { const right = answers[number] === exam.answerKey[number]; return <tr key={number}><th>{number}번</th><td>{answers[number] || <span className="unanswered">미응답</span>}</td><td>{exam.answerKey[number]}</td><td><span className={`result-pill ${right ? 'correct' : 'incorrect'}`}>{right ? 'O 정답' : 'X 오답'}</span></td></tr>; })}</tbody></table></div></section><PdfReview exam={exam} wrongQuestions={wrongQuestions} attemptId={attemptId} onNotesChange={setReviewData} onOpenBank={onOpenBank} /><div className="result-actions"><button className="button button-primary" onClick={exit}>시험지 목록</button></div></main>;
+    return <main className="pdf-results-shell"><header className="bank-header"><button className="button button-secondary" onClick={exit}><ArrowLeft size={16} /> 나가기</button><div><span className="eyebrow">OMR RESULT</span><h1>{exam.name}</h1></div></header><section className="result-summary"><span className="eyebrow">{exam.subjectName} 채점 결과</span><h1>{correct}<span> / {exam.total}</span></h1><p>{Math.round(correct / exam.total * 100)}% 정답 · {saved ? '점수 기록 저장 완료' : '점수 기록 저장 중'}</p><div className="score-track"><span style={{ width: `${correct / exam.total * 100}%` }} /></div></section><section className="result-card"><div className="result-table-wrap"><table className="result-table"><thead><tr><th>문항</th><th>내 답</th><th>정답</th><th>결과</th></tr></thead><tbody>{Array.from({ length: exam.total }, (_, i) => i + 1).map((number) => { const right = answers[number] === exam.answerKey[number]; return <tr key={number}><th>{number}번</th><td>{answers[number] || <span className="unanswered">미응답</span>}</td><td>{exam.answerKey[number]}</td><td><span className={`result-pill ${right ? 'correct' : 'incorrect'}`}>{right ? 'O 정답' : 'X 오답'}</span></td></tr>; })}</tbody></table></div></section><PdfReview exam={exam} wrongQuestions={wrongQuestions} attemptId={attemptId} onNotesChange={setReviewData} onOpenBank={onOpenBank} /><div className="result-actions"><button className="button button-secondary" onClick={replay}><RotateCcw size={15} /> 다시 풀기</button><button className="button button-primary" onClick={exit}>시험지 목록</button></div></main>;
   }
 
   return <main className={`pdf-exam-shell ${viewOnly ? 'pdf-reader-mode' : ''}`}><header className="pdf-exam-header"><button className="icon-button" onClick={exit} aria-label="공부방으로"><ArrowLeft size={18} /></button><div className="pdf-exam-title"><strong>{exam.name}</strong><small>{exam.subjectName} · {viewOnly ? '개념 PDF' : `${exam.total}문항 OMR 풀이`}</small></div>{!viewOnly && <><span className={`exam-clock ${remaining <= 300 ? 'is-warning' : ''}`} role="timer"><Clock3 size={15} /> {clockText(remaining)}</span><button className="button button-primary pdf-submit-top" onClick={submit}>제출</button></>}</header>
