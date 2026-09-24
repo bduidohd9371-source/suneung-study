@@ -112,13 +112,28 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
 
   const handlePdfPointerUp = (event) => {
     const gesture = pdfGestureRef.current;
+    const point = gesture.pointers.get(event.pointerId);
     gesture.pointers.delete(event.pointerId);
     if (gesture.pointers.size < 2) gesture.pinch = null;
     if (gesture.pointers.size === 1) {
-      const [pointerId, point] = [...gesture.pointers.entries()][0];
-      gesture.single = { pointerId, startX: point.x, startY: point.y, panX: pdfPan.x, panY: pdfPan.y };
+      const [pointerId, remainingPoint] = [...gesture.pointers.entries()][0];
+      gesture.single = { pointerId, startX: remainingPoint.x, startY: remainingPoint.y, panX: pdfPan.x, panY: pdfPan.y };
     } else if (!gesture.pointers.size) {
+      const single = gesture.single;
       gesture.single = null;
+      if (point && single && pdfZoom <= 1.01) {
+        const dx = event.clientX - single.startX;
+        const dy = event.clientY - single.startY;
+        if (Math.abs(dx) >= 80 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+          if (dx < 0 && page < pageCount) {
+            setPage((value) => Math.min(pageCount, value + 1));
+            setPdfPan({ x: 0, y: 0 });
+          } else if (dx > 0 && page > 1) {
+            setPage((value) => Math.max(1, value - 1));
+            setPdfPan({ x: 0, y: 0 });
+          }
+        }
+      }
     }
   };
 
