@@ -21,6 +21,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
   const [draftSaveError, setDraftSaveError] = useState(false);
   const [omrOpen, setOmrOpen] = useState(false);
   const [drawEnabled, setDrawEnabled] = useState(false);
+  const [eraseEnabled, setEraseEnabled] = useState(false);
   const [clearerText, setClearerText] = useState(false);
   const [pageMarks, setPageMarks] = useState([]);
   const [pageSize, setPageSize] = useState({ width: 0, height: 0, ratio: 1 });
@@ -34,6 +35,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
   const frameRef = useRef(null);
   const marksRef = useRef([]);
   const drawingRef = useRef(false);
+  const erasingRef = useRef(false);
   const pixelRatioRef = useRef(1);
   const [frameWidth, setFrameWidth] = useState(0);
   const remainingRef = useRef(remaining);
@@ -149,17 +151,23 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
   }
   function beginInk(event) {
-    if (!drawEnabled) return;
+    if (!drawEnabled && !eraseEnabled) return;
     event.preventDefault();
-    drawingRef.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (eraseEnabled) {
+      erasingRef.current = true;
+      eraseAtPoint(pointFromEvent(event));
+      return;
+    }
+    drawingRef.current = true;
     const next = [...marksRef.current, { color: '#d33f49', width: event.pointerType === 'pen' ? 0.0021 : 0.0032, points: [pointFromEvent(event)] }];
     marksRef.current = next;
     setPageMarks(next);
   }
   function moveInk(event) {
-    if (!drawingRef.current) return;
+    if (!drawingRef.current && !erasingRef.current) return;
     event.preventDefault();
+    if (erasingRef.current) { eraseAtPoint(pointFromEvent(event)); return; }
     const next = [...marksRef.current];
     const last = next[next.length - 1];
     last.points.push(pointFromEvent(event));
@@ -167,14 +175,30 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     setPageMarks(next);
   }
   async function endInk() {
-    if (!drawingRef.current) return;
+    if (!drawingRef.current && !erasingRef.current) return;
     drawingRef.current = false;
+    erasingRef.current = false;
     try { await savePageMarks(exam.id, page, marksRef.current); } catch { setLoadError('필기를 저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.'); }
   }
-  async function clearPageMarks() {
-    marksRef.current = [];
-    setPageMarks([]);
-    try { await savePageMarks(exam.id, page, []); } catch { setLoadError('필기를 지우지 못했어요.'); }
+  function eraseAtPoint(point) {
+    const radius = 19;
+    const px = point.x * pageSize.width;
+    const py = point.y * pageSize.height;
+    const distanceToSegment = (a, b) => {
+      const ax = a.x * pageSize.width; const ay = a.y * pageSize.height;
+      const bx = b.x * pageSize.width; const by = b.y * pageSize.height;
+      const dx = bx - ax; const dy = by - ay;
+      const lengthSquared = dx * dx + dy * dy;
+      const t = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    const hit = (stroke) => {
+      const points = stroke.points || [];
+      if (points.length === 1) return distanceToSegment(points[0], points[0]) <= radius;
+      return points.slice(1).some((point, index) => distanceToSegment(points[index], point) <= radius);
+    };
+    const next = marksRef.current.filter((stroke) => !hit(stroke));
+    if (next.length !== marksRef.current.length) { marksRef.current = next; setPageMarks(next); }
   }
   useEffect(() => {
     if (viewOnly || !pdf || !draftReady) return undefined;
@@ -209,7 +233,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
 
   return <main className={`pdf-exam-shell ${viewOnly ? 'pdf-reader-mode' : ''}`}><header className="pdf-exam-header"><button className="icon-button" onClick={exit} aria-label="공부방으로"><ArrowLeft size={18} /></button><div className="pdf-exam-title"><strong>{exam.name}</strong><small>{exam.subjectName} · {viewOnly ? '개념 PDF' : `${exam.total}문항 OMR 풀이`}</small></div>{!viewOnly && <><span className={`exam-clock ${remaining <= 300 ? 'is-warning' : ''}`} role="timer"><Clock3 size={15} /> {clockText(remaining)}</span><button className="button button-primary pdf-submit-top" onClick={submit}>제출</button></>}</header>
     {!viewOnly && draftReady && <p className={`pdf-draft-status ${draftSaveError ? 'has-error' : ''}`} role={draftSaveError ? 'alert' : 'status'}>{draftLoaded ? `이전 풀이를 복구했어요 · ${Object.keys(answers).length}/${exam.total}개 답변 · 저장 ${new Date(draftLoaded.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : '답안은 이 기기에 자동 저장돼요.'}{draftSaveError && <span> · 저장 공간을 확인해 주세요</span>}</p>}
-    {loadError ? <section className="pdf-load-error"><p>{loadError}</p><button className="button button-secondary" onClick={exit}>목록으로</button></section> : <div className="pdf-exam-layout"><section className="pdf-page-area"><div className="pdf-page-toolbar"><button className="button button-secondary" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ArrowLeft size={14} /> 이전</button><span><FileText size={14} /> {page} / {pageCount || '…'} 쪽</span><button className="button button-secondary" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>다음 <ArrowRight size={14} /></button><button className={`button ${clearerText ? 'button-primary' : 'button-secondary'} pdf-contrast-toggle`} onClick={() => setClearerText((value) => !value)} aria-pressed={clearerText} title="글씨 대비 조절"><Sun size={14} /> 선명</button><button className={`button ${drawEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => setDrawEnabled((value) => !value)} aria-pressed={drawEnabled}><Pencil size={14} /> {drawEnabled ? '필기 중' : '필기'}</button><button className="button button-secondary pdf-erase-button" onClick={clearPageMarks} title="현재 쪽 필기 지우기"><Eraser size={14} /></button></div><div className="pdf-canvas-frame" ref={frameRef}>{pdf ? <div className="pdf-document-page" style={{ width: pageSize.width || undefined, height: pageSize.height || undefined }}><canvas ref={canvasRef} className={clearerText ? 'pdf-clearer-text' : ''} aria-label={`시험지 ${page}쪽`} /><canvas ref={inkCanvasRef} className={`pdf-ink-canvas ${drawEnabled ? 'ink-enabled' : ''}`} onPointerDown={beginInk} onPointerMove={moveInk} onPointerUp={endInk} onPointerCancel={endInk} aria-label="PDF 위 필기 영역" /></div> : <span>원본 PDF 여는 중…</span>}</div></section></div>}
+    {loadError ? <section className="pdf-load-error"><p>{loadError}</p><button className="button button-secondary" onClick={exit}>목록으로</button></section> : <div className="pdf-exam-layout"><section className="pdf-page-area"><div className="pdf-page-toolbar"><button className="button button-secondary" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ArrowLeft size={14} /> 이전</button><span><FileText size={14} /> {page} / {pageCount || '…'} 쪽</span><button className="button button-secondary" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>다음 <ArrowRight size={14} /></button><button className={`button ${clearerText ? 'button-primary' : 'button-secondary'} pdf-contrast-toggle`} onClick={() => setClearerText((value) => !value)} aria-pressed={clearerText} title="글씨 대비 조절"><Sun size={14} /> 선명</button><button className={`button ${drawEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setDrawEnabled((value) => !value); setEraseEnabled(false); }} aria-pressed={drawEnabled}><Pencil size={14} /> {drawEnabled ? '필기 중' : '필기'}</button><button className={`button ${eraseEnabled ? 'button-primary' : 'button-secondary'} pdf-pen-toggle`} onClick={() => { setEraseEnabled((value) => !value); setDrawEnabled(false); }} aria-label={eraseEnabled ? '지우개 사용 중' : '지우개 모드'} aria-pressed={eraseEnabled}><Eraser size={14} /> {eraseEnabled ? '지우는 중' : '지우개'}</button></div><div className="pdf-canvas-frame" ref={frameRef}>{pdf ? <div className="pdf-document-page" style={{ width: pageSize.width || undefined, height: pageSize.height || undefined }}><canvas ref={canvasRef} className={clearerText ? 'pdf-clearer-text' : ''} aria-label={`시험지 ${page}쪽`} /><canvas ref={inkCanvasRef} className={`pdf-ink-canvas ${drawEnabled || eraseEnabled ? 'ink-enabled' : ''} ${eraseEnabled ? 'ink-erasing' : ''}`} onPointerDown={beginInk} onPointerMove={moveInk} onPointerUp={endInk} onPointerCancel={endInk} aria-label={eraseEnabled ? '지울 필기를 눌러 지우세요' : 'PDF 위 필기 영역'} /></div> : <span>원본 PDF 여는 중…</span>}</div></section></div>}
     {!viewOnly && !submitted && <button className="omr-mobile-trigger" onClick={() => setOmrOpen(true)}><Grid3X3 size={17} /> OMR 답안 <span>{Object.keys(answers).length}/{exam.total}</span></button>}
     {omrOpen && <div className="omr-mobile-backdrop" onClick={() => setOmrOpen(false)}><section className="omr-mobile-sheet" onClick={(event) => event.stopPropagation()}><div className="omr-sheet-grabber"/><div className="omr-heading"><div><span className="eyebrow">ANSWER SHEET</span><h2>OMR 답안</h2></div><button className="button button-secondary" onClick={() => setOmrOpen(false)}>닫기</button></div><div className="omr-progress"><span style={{ width: `${Object.keys(answers).length / exam.total * 100}%` }} /></div><div className="omr-mobile-grid">{Array.from({ length: exam.total }, (_, i) => i + 1).map((number) => <div className="omr-row" key={number}><span className={`omr-number ${answers[number] ? 'answered' : ''}`}>{number}</span><div className="omr-options">{[1, 2, 3, 4, 5].map((answer) => <button key={answer} className={answers[number] === answer ? 'chosen' : ''} aria-label={`${number}번 ${answer}번 선택`} onClick={() => setAnswers((previous) => ({ ...previous, [number]: answer }))}>{answer}</button>)}</div></div>)}</div><button className="button button-primary omr-submit" onClick={submit}><Check size={15} /> 답안 제출 및 채점</button></section></div>}
   </main>;
