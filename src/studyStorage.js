@@ -1,4 +1,5 @@
 import { readCalendarData } from './calendarStorage.js';
+import { getQuestBonusXp, getQuestStats } from './questStorage.js';
 
 const STORAGE_KEY = 'suneung-study-attempts-v1';
 const QUESTION_BANK_KEY = 'suneung-imported-questions-v1';
@@ -126,6 +127,42 @@ export function getAnalytics() {
     return counts;
   }, {});
 
+  const dateKeys = new Set([
+    ...calendar.logs.map((log) => log.date).filter(Boolean),
+    ...attempts.map((attempt) => attempt.createdAt ? new Date(attempt.createdAt).toLocaleDateString('en-CA') : '').filter(Boolean),
+  ]);
+  const dateSequence = (dates) => {
+    const sorted = [...dates].sort();
+    let best = 0;
+    let run = 0;
+    let previous = null;
+    for (const date of sorted) {
+      const current = new Date(`${date}T12:00:00`);
+      const prev = previous ? new Date(`${previous}T12:00:00`) : null;
+      run = prev && (current - prev) === 86_400_000 ? run + 1 : 1;
+      best = Math.max(best, run);
+      previous = date;
+    }
+    const today = new Date().toLocaleDateString('en-CA');
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterday = yesterdayDate.toLocaleDateString('en-CA');
+    let current = 0;
+    let cursor = dateKeys.has(today) ? new Date(`${today}T12:00:00`) : dateKeys.has(yesterday) ? new Date(`${yesterday}T12:00:00`) : null;
+    while (cursor && dateKeys.has(cursor.toLocaleDateString('en-CA'))) {
+      current += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return { current, best };
+  };
+  const studyStreak = dateSequence(dateKeys);
+  const wakeDates = new Set(Object.entries(calendar.sleep || {}).filter(([, sleep]) => {
+    const match = String(sleep?.wake || '').match(/^(\d{1,2}):(\d{2})$/);
+    return match && (Number(match[1]) * 60 + Number(match[2])) <= 450;
+  }).map(([date]) => date));
+  const wakeStreak = dateSequence(wakeDates);
+  const reviewedWrongAnswers = attempts.reduce((count, attempt) => count + (attempt.wrongReviews || []).filter((review) => review.reason || review.insight || review.strokes?.length).length, 0);
+
   return {
     attempts: attempts.length,
     questions: totals.questions,
@@ -134,6 +171,16 @@ export function getAnalytics() {
     weakSubject: subjects[0] || null,
     recentScores: attempts.slice(0, 7).reverse().map((attempt) => Math.round((attempt.correct / attempt.total) * 100)),
     studyMinutes: studyRows.reduce((sum, row) => sum + row.minutes, 0),
+    questBonusXp: getQuestBonusXp(),
+    achievementStats: {
+      studyDays: dateKeys.size,
+      currentStudyStreak: studyStreak.current,
+      bestStudyStreak: studyStreak.best,
+      currentWakeStreak: wakeStreak.current,
+      bestWakeStreak: wakeStreak.best,
+      reviewedWrongAnswers,
+      quest: getQuestStats(),
+    },
     studyBySubject,
     mistakeReasons: Object.entries(reasonCounts).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
   };
