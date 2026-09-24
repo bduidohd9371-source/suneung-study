@@ -74,6 +74,10 @@ export default function GrowthCard({ studyMinutes = 0, questBonusXp = 0, clearBo
   const rankProgress = nextRank ? Math.min(100, ((totalXp - rank.minXp) / (nextRank.minXp - rank.minXp)) * 100) : 100;
   const achievements = getAchievements({ ...achievementStats, studyMinutes });
   const unlocked = achievements.filter((badge) => badge.progress >= badge.target).length;
+  const nextAchievements = achievements
+    .filter((badge) => badge.progress < badge.target)
+    .sort((a, b) => (b.progress / b.target) - (a.progress / a.target))
+    .slice(0, 3);
   const hours = Math.floor(totalStudyMinutes / 60);
   const minutes = totalStudyMinutes % 60;
 
@@ -84,6 +88,8 @@ export default function GrowthCard({ studyMinutes = 0, questBonusXp = 0, clearBo
       <div className="growth-rank-xp"><span><Zap size={15} fill="currentColor" /> {totalXp.toLocaleString()} XP</span><small>누적 공부 {hours > 0 ? `${hours}시간 ` : ''}{minutes}분 · 퀘스트 {Number(questBonusXp) || 0} XP · 기출 클리어 {Number(clearBonusXp) || 0} XP</small></div>
       <div className="growth-rank-progress"><div className="growth-progress-track" role="progressbar" aria-label={nextRank ? `${nextRank.name}까지 진행률 ${Math.round(rankProgress)}퍼센트` : '최고 랭크 달성'} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(rankProgress)}><span style={{ width: `${rankProgress}%` }} /></div><div className="growth-progress-copy"><span>{rank.name}</span><strong>{nextRank ? `${(nextRank.minXp - totalXp).toLocaleString()} XP → ${nextRank.name}` : '최고 랭크 달성!'}</strong></div></div>
     </section>
+
+    <section className="growth-missions"><div className="growth-section-heading"><div><span className="eyebrow">NEXT ACHIEVEMENTS</span><h2>다음 업적 미션</h2></div><span>가까운 목표부터</span></div><div className="growth-mission-grid">{nextAchievements.map((badge) => { const progress = Math.min(badge.progress, badge.target); const percent = Math.round((progress / badge.target) * 100); const shown = badge.format ? badge.format(progress) : `${progress} / ${badge.target}`; return <article className="growth-mission" key={badge.name}><div className="growth-mission-head"><span>{badge.icon}</span><small>진행 중</small></div><strong>{badge.name}</strong><p>{badge.detail}</p><div className="growth-mission-track" role="progressbar" aria-label={`${badge.name} 진행률 ${percent}%`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><span style={{ width: `${percent}%` }} /></div><small className="growth-mission-count">{shown} · {percent}%</small></article>; })}</div></section>
 
     <section className="growth-rank-section"><div className="growth-section-heading"><div><span className="eyebrow">RANK ROAD</span><h2>랭크 여정</h2></div><span>{rankIndex + 1} / {RANKS.length} 달성</span></div><div className="growth-rank-road">{RANKS.map((item, index) => { const achieved = totalXp >= item.minXp; return <div key={item.name} className={`growth-rank-stop ${achieved ? 'achieved' : ''} ${index === rankIndex ? 'current' : ''}`}><span className={`growth-rank-dot rank-${item.tone}`}>{achieved ? <Check size={13} /> : <LockKeyhole size={12} />}</span><span><strong>{item.name}</strong><small>{item.minXp.toLocaleString()} XP</small></span>{index === rankIndex && <em>현재</em>}</div>; })}</div></section>
 
