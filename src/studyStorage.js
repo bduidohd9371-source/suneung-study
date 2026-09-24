@@ -1,5 +1,6 @@
 import { readCalendarData } from './calendarStorage.js';
 import { getQuestBonusXp, getQuestStats } from './questStorage.js';
+import { getClearStats } from './clearStorage.js';
 
 const STORAGE_KEY = 'suneung-study-attempts-v1';
 const QUESTION_BANK_KEY = 'suneung-imported-questions-v1';
@@ -163,6 +164,8 @@ export function getAnalytics() {
   const wakeStreak = dateSequence(wakeDates);
   const reviewedWrongAnswers = attempts.reduce((count, attempt) => count + (attempt.wrongReviews || []).filter((review) => review.reason || review.insight || review.strokes?.length).length, 0);
 
+  const clearStats = getClearStats();
+  const subjectStudyMinutes = Object.fromEntries(studyBySubject.map((row) => [row.id, row.minutes]));
   return {
     attempts: attempts.length,
     questions: totals.questions,
@@ -172,6 +175,7 @@ export function getAnalytics() {
     recentScores: attempts.slice(0, 7).reverse().map((attempt) => Math.round((attempt.correct / attempt.total) * 100)),
     studyMinutes: studyRows.reduce((sum, row) => sum + row.minutes, 0),
     questBonusXp: getQuestBonusXp(),
+    clearBonusXp: clearStats.count * 25,
     achievementStats: {
       studyDays: dateKeys.size,
       currentStudyStreak: studyStreak.current,
@@ -179,6 +183,15 @@ export function getAnalytics() {
       currentWakeStreak: wakeStreak.current,
       bestWakeStreak: wakeStreak.best,
       reviewedWrongAnswers,
+      clearedExams: clearStats.count,
+      clearedTriples: clearStats.triples,
+      cleared2026Triple: clearStats.has2026Triple,
+      clearJune: clearStats.entries.filter((item) => item.type === 'june').length,
+      clearSeptember: clearStats.entries.filter((item) => item.type === 'september').length,
+      clearSuneung: clearStats.entries.filter((item) => item.type === 'suneung').length,
+      subjectStudyMinutes,
+      accuracy: totals.questions ? Math.round((totals.correct / totals.questions) * 100) : 0,
+      questions: totals.questions,
       quest: getQuestStats(),
     },
     studyBySubject,

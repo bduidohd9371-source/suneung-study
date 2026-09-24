@@ -4,6 +4,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { deletePdfExamDraft, getPageMarks, getPdfExam, getPdfExamDraft, savePageMarks, savePdfExamDraft } from './pdfStorage.js';
 import { saveAttempt, updateAttempt } from './studyStorage.js';
+import { recordExamClear } from './clearStorage.js';
 import PdfReview from './PdfReview.jsx';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -192,7 +193,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     const correct = Object.entries(exam.answerKey).filter(([number, answer]) => answers[number] === answer).length;
     const wrongReviews = Array.from({ length: exam.total }, (_, index) => index + 1).filter((number) => answers[number] !== exam.answerKey[number]).map((number) => ({ questionId: `pdf:${exam.id}:${number}`, questionNumber: number, myAnswer: answers[number] || null, correctAnswer: exam.answerKey[number] }));
     const ok = saveAttempt({ id: attemptId, createdAt: new Date().toISOString(), subjectId: exam.subjectId, subjectName: exam.subjectName, total: exam.total, correct, durationSeconds: exam.minutes * 60 - remaining, answers, source: exam.name, sourceExamId: exam.id, topic: '', wrongReviews });
-    if (ok) { deletePdfExamDraft(exam.id); setSaved(true); }
+    if (ok) { deletePdfExamDraft(exam.id); recordExamClear(exam); setSaved(true); }
   }, [submitted, saved, answers, exam, remaining, attemptId]);
   useEffect(() => {
     if (!saved) return;

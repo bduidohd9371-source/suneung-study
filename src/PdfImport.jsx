@@ -6,6 +6,8 @@ import { extractAnswerKey, parseAnswerKey } from './answerKeyExtractor.js';
 
 export default function PdfImport({ onExit, onStart, initialSubject = SUBJECTS[0] }) {
   const [subjectId, setSubjectId] = useState(initialSubject.id);
+  const [examYear, setExamYear] = useState(new Date().getFullYear());
+  const [examType, setExamType] = useState('other');
   const selectedSubject = SUBJECTS.find((subject) => subject.id === subjectId) || SUBJECTS[0];
   const [file, setFile] = useState(null);
   const [total, setTotal] = useState(Number(initialSubject.detail.match(/\d+문항/)?.[0]?.replace('문항', '')) || 45);
@@ -57,7 +59,7 @@ export default function PdfImport({ onExit, onStart, initialSubject = SUBJECTS[0
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { setError('PDF 파일을 선택해 주세요.'); return; }
     if (file.size > 50 * 1024 * 1024) { setError('PDF는 50MB 이하 파일을 선택해 주세요.'); return; }
     setSaving(true); setError('');
-    const exam = { id: globalThis.crypto?.randomUUID?.() || `pdf-${Date.now()}`, kind: 'exam', subjectId, subjectName: selectedSubject.name, minutes: selectedSubject.minutes, name: file.name, total, answerKey: key, blob: file, createdAt: new Date().toISOString() };
+    const exam = { id: globalThis.crypto?.randomUUID?.() || `pdf-${Date.now()}`, kind: 'exam', subjectId, subjectName: selectedSubject.name, minutes: selectedSubject.minutes, name: file.name, total, answerKey: key, examYear: Number(examYear), examType, blob: file, createdAt: new Date().toISOString() };
     try { await savePdfExam(exam); onStart(exam); }
     catch { setError('PDF를 이 브라우저에 저장하지 못했어요. 저장 공간을 확인해 주세요.'); }
     finally { setSaving(false); }
@@ -78,7 +80,7 @@ export default function PdfImport({ onExit, onStart, initialSubject = SUBJECTS[0
     <header className="import-header"><button className="icon-button" onClick={onExit} aria-label="홈으로"><ArrowLeft size={18} /></button><div><span className="eyebrow">PDF EXAM · OMR</span><h1>PDF 시험지와 OMR</h1></div></header>
     <section className="import-intro"><span className="import-icon"><FileUp size={19} /></span><div><strong>원본 PDF 그대로 풀어요.</strong><p>문제 텍스트를 추출하지 않고 시험지를 표시합니다. OMR에서 답을 입력하고 정답표와 자동 채점해요. PDF와 답안은 이 브라우저에만 저장됩니다.</p></div></section>
     <form className="pdf-setup-form" onSubmit={saveAndStart}>
-      <div className="pdf-setup-grid"><label className="import-subject">과목<select value={subjectId} onChange={(event) => changeSubject(event.target.value)}>{SUBJECTS.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label><label className="pdf-total-field">문항 수<input type="number" min="1" max="100" value={total} onChange={(event) => setTotal(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} /></label><label className="file-pick"><input type="file" accept="application/pdf,.pdf" onChange={(event) => { setFile(event.target.files?.[0] || null); setError(''); }} /><FileUp size={16} /> PDF 선택</label></div>
+      <div className="pdf-setup-grid"><label className="import-subject">과목<select value={subjectId} onChange={(event) => changeSubject(event.target.value)}>{SUBJECTS.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label><label className="pdf-total-field">시험연도<select value={examYear} onChange={(event) => setExamYear(Number(event.target.value))}>{Array.from({ length: 9 }, (_, index) => new Date().getFullYear() - index).map((year) => <option key={year} value={year}>{year}년</option>)}</select></label><label className="import-subject">시험 종류<select value={examType} onChange={(event) => setExamType(event.target.value)}><option value="june">6월 모의평가</option><option value="september">9월 모의평가</option><option value="suneung">대학수학능력시험</option><option value="other">기타 시험</option></select></label><label className="pdf-total-field">문항 수<input type="number" min="1" max="100" value={total} onChange={(event) => setTotal(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} /></label><label className="file-pick"><input type="file" accept="application/pdf,.pdf" onChange={(event) => { setFile(event.target.files?.[0] || null); setError(''); }} /><FileUp size={16} /> PDF 선택</label></div>
       {file && <p className="selected-file">선택한 시험지: {file.name} · {(file.size / 1024 / 1024).toFixed(1)}MB</p>}
       <div className="answer-pdf-picker"><label className={`file-pick ${extracting ? 'disabled' : ''}`}><input type="file" accept="application/pdf,.pdf" disabled={extracting} onChange={readAnswerPdf} /><FileUp size={16} /> {extracting ? '정답 읽는 중…' : '정답표 PDF에서 자동 읽기'}</label>{answerPdf && <span className="selected-file">{answerPdf.name}</span>}</div>
       {extractStatus && <p className="answer-extract-status" role="status">{extractStatus}</p>}

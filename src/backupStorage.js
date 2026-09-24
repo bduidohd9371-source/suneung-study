@@ -3,6 +3,7 @@ import { exportPdfArchive, importPdfArchive } from './pdfStorage.js';
 const FORMAT = 'suneung-study-backup';
 const VERSION = 1;
 const MAX_BACKUP_BYTES = 200 * 1024 * 1024;
+const EXTRA_BACKUP_KEYS = ['suneung_cleared_exams'];
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -19,7 +20,7 @@ export async function downloadStudyBackup() {
   const browserData = {};
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key?.startsWith('suneung-')) browserData[key] = localStorage.getItem(key);
+    if (key?.startsWith('suneung-') || EXTRA_BACKUP_KEYS.includes(key)) browserData[key] = localStorage.getItem(key);
   }
   const payload = {
     format: FORMAT,
@@ -43,12 +44,12 @@ export async function restoreStudyBackup(file) {
     throw new Error('수능 루틴 백업 파일이 아니거나 형식이 오래됐어요.');
   }
   const entries = Object.entries(payload.localStorage);
-  if (entries.some(([key, value]) => !key.startsWith('suneung-') || typeof value !== 'string')) throw new Error('백업에 지원하지 않는 데이터가 포함되어 있어요.');
+  if (entries.some(([key, value]) => (!key.startsWith('suneung-') && !EXTRA_BACKUP_KEYS.includes(key)) || typeof value !== 'string')) throw new Error('백업에 지원하지 않는 데이터가 포함되어 있어요.');
 
   const previous = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key?.startsWith('suneung-')) previous.push([key, localStorage.getItem(key)]);
+    if (key?.startsWith('suneung-') || EXTRA_BACKUP_KEYS.includes(key)) previous.push([key, localStorage.getItem(key)]);
   }
   try {
     for (const [key] of previous) localStorage.removeItem(key);
@@ -57,7 +58,7 @@ export async function restoreStudyBackup(file) {
   } catch (error) {
     for (let index = localStorage.length - 1; index >= 0; index -= 1) {
       const key = localStorage.key(index);
-      if (key?.startsWith('suneung-')) localStorage.removeItem(key);
+      if (key?.startsWith('suneung-') || EXTRA_BACKUP_KEYS.includes(key)) localStorage.removeItem(key);
     }
     try { previous.forEach(([key, value]) => localStorage.setItem(key, value)); } catch { /* report the original restore failure */ }
     throw error;

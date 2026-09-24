@@ -6,6 +6,7 @@ import { getAnalytics } from './studyStorage.js';
 import { getPdfExam } from './pdfStorage.js';
 import QuickStart from './QuickStart.jsx';
 import GrowthCard from './GrowthCard.jsx';
+import InstallPrompt from './InstallPrompt.jsx';
 const DataBackup = lazy(() => import('./DataBackup.jsx'));
 const PdfImport = lazy(() => import('./PdfImport.jsx'));
 const PdfExam = lazy(() => import('./PdfExam.jsx'));
@@ -68,11 +69,13 @@ function App() {
     window.addEventListener('suneung:stats-updated', refreshAnalytics);
     window.addEventListener('suneung:calendar-updated', refreshAnalytics);
     window.addEventListener('suneung:quests-updated', refreshAnalytics);
+    window.addEventListener('suneung:clears-updated', refreshAnalytics);
     window.addEventListener('storage', refreshAnalytics);
     return () => {
       window.removeEventListener('suneung:stats-updated', refreshAnalytics);
       window.removeEventListener('suneung:calendar-updated', refreshAnalytics);
       window.removeEventListener('suneung:quests-updated', refreshAnalytics);
+      window.removeEventListener('suneung:clears-updated', refreshAnalytics);
       window.removeEventListener('storage', refreshAnalytics);
     };
   }, []);
@@ -96,11 +99,12 @@ function App() {
         </section>
         <QuickStart />
         <HomeNavigation active={homeTab} onSelect={setHomeTab} onCalendar={() => setCalendarActive(true)} />
+        <InstallPrompt />
         </>}
         {homeTab !== 'today' && <header className="view-page-header"><button type="button" onClick={() => setHomeTab('today')} aria-label="홈으로 돌아가기"><ArrowLeft size={18} /><span>홈으로</span></button><div><span className="eyebrow">수능 루틴</span><h1>{({ practice: '실전·자료', progress: '점수·복습', growth: '내 성장기록' })[homeTab]}</h1></div></header>}
         {homeTab === 'practice' && <section className="home-view"><section className="section-heading"><div><span className="eyebrow">YOUR STUDY, YOUR PACE</span><h2>과목 공부방 선택</h2><p className="hub-section-note">과목을 고르면 해당 과목의 실전, 시험지와 개념 자료를 볼 수 있어요.</p></div></section><section className="subject-grid" aria-label="과목 공부방">{SUBJECTS.map((subject) => <button key={subject.id} aria-label={`${subject.name} 공부방으로 이동`} className={`subject-card ${selected.id === subject.id ? 'is-selected' : ''}`} onClick={() => { setSelected(subject); setHubActive(true); }}><span className={`subject-icon ${subject.color}`}>{subject.icon}</span><span className="subject-info"><strong>{subject.name}</strong><small>실전 · 문제 · 개념 자료</small></span><span className="subject-time" aria-hidden="true"><ArrowRight size={18} /></span></button>)}</section></section>}
         {homeTab === 'progress' && <section className="home-view progress-view"><section className="analytics-card"><div className="analytics-header"><div><span className="eyebrow">MY STUDY DATA</span><h2>점수와 공부량</h2></div><span className="local-save-label">이 기기에 저장</span></div><div className="analytics-metrics"><div className="analytics-metric"><span>실전 풀이</span><strong>{analytics.attempts}<i>회</i></strong></div><div className="analytics-metric"><span>누적 정답률</span><strong>{analytics.accuracy}<i>%</i></strong></div><div className="analytics-metric"><span>기록한 공부</span><strong>{Math.floor(analytics.studyMinutes / 60)}<i>시간</i> {analytics.studyMinutes % 60}<i>분</i></strong></div><div className="analytics-metric weak-metric"><span>먼저 복습할 과목</span><strong>{analytics.weakSubject?.name || '기록 없음'}<i>{analytics.weakSubject ? `${Math.round((analytics.weakSubject.correct / analytics.weakSubject.total) * 100)}%` : ''}</i></strong></div></div>{analytics.recentScores.length > 0 && <div className="score-trend"><span>최근 정답률</span><div className="trend-bars" role="img" aria-label={`최근 풀이 정답률 ${analytics.recentScores.join(', ')}퍼센트`}>{analytics.recentScores.map((score, index) => <span key={`${index}-${score}`} title={`${score}%`}><i style={{ height: `${Math.max(8, score)}%` }} /></span>)}</div></div>}{analytics.studyBySubject.length > 0 && <div className="analytics-breakdown"><h3>과목별 기록 시간</h3>{analytics.studyBySubject.map((row) => <div key={row.id}><span>{row.name}</span><strong>{row.minutes >= 60 ? `${Math.floor(row.minutes / 60)}시간 ${row.minutes % 60}분` : `${row.minutes}분`}</strong></div>)}</div>}{analytics.mistakeReasons.length > 0 && <div className="analytics-breakdown"><h3>자주 틀린 이유</h3>{analytics.mistakeReasons.slice(0, 3).map((row) => <div key={row.reason}><span>{row.reason}</span><strong>{row.count}회</strong></div>)}</div>}</section><Suspense fallback={null}><DueReviews onOpenPdf={async (id) => { try { const exam = await getPdfExam(id); if (exam) setPdfExam(exam); } catch { /* the PDF library can be reopened from the home screen */ } }} /><DataBackup /></Suspense></section>}
-        {homeTab === 'growth' && <section className="home-view growth-view"><GrowthCard studyMinutes={analytics.studyMinutes} questBonusXp={analytics.questBonusXp} achievementStats={analytics.achievementStats} /></section>}
+        {homeTab === 'growth' && <section className="home-view growth-view"><GrowthCard studyMinutes={analytics.studyMinutes} questBonusXp={analytics.questBonusXp} clearBonusXp={analytics.clearBonusXp} achievementStats={analytics.achievementStats} /></section>}
         <footer className="footer"><span>© 2026 수능루틴</span><span>작은 복습이 쌓여 큰 실력이 됩니다.</span></footer>
       </div>
     </main>
