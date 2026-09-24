@@ -22,7 +22,7 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
   const [draftLoaded, setDraftLoaded] = useState(null);
   const [draftSaveError, setDraftSaveError] = useState(false);
   const [omrOpen, setOmrOpen] = useState(false);
-  const [drawEnabled, setDrawEnabled] = useState(false);
+  const [drawEnabled, setDrawEnabled] = useState(true);
   const [eraseEnabled, setEraseEnabled] = useState(false);
   const [penColor, setPenColor] = useState('#2563eb');
   const [penSize, setPenSize] = useState(2.5);
@@ -269,6 +269,29 @@ export default function PdfExam({ exam, onExit, onOpenBank, viewOnly = false }) 
     if (!drawingRef.current && !erasingRef.current) return;
     drawingRef.current = false;
     erasingRef.current = false;
+
+    // S펜으로 그린 선의 시작/끝이 거의 일직선이면 짧게 꾹 누른 동작을
+    // 곧은 선으로 보정한다.
+    const last = marksRef.current[marksRef.current.length - 1];
+    if (!erasingRef.current && last?.points?.length >= 4) {
+      const points = last.points;
+      const start = points[0];
+      const end = points[points.length - 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy);
+      const deviation = points.reduce((sum, point) => {
+        const cross = Math.abs((point.x - start.x) * dy - (point.y - start.y) * dx);
+        return sum + (length ? cross / length : 0);
+      }, 0) / points.length;
+      if (length > 0.025 && deviation < 0.012) {
+        const next = [...marksRef.current];
+        next[next.length - 1] = { ...last, points: [start, end] };
+        marksRef.current = next;
+        setPageMarks(next);
+      }
+    }
+
     try { await savePageMarks(exam.id, page, marksRef.current); } catch { setLoadError('필기를 저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.'); }
   }
   function eraseAtPoint(point) {
